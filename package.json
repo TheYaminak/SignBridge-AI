@@ -1,0 +1,16 @@
+{
+  "name": "signbridge-ai",
+  "private": true,
+  "description": "SignBridge AI monorepo: Go API (backend/) and Next.js UI (frontend/).",
+  "scripts": {
+    "setup": "npm install && npm --prefix frontend install && cd backend && go mod download",
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "cd backend && go run ./cmd/api",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "test": "cd backend && go test ./...",
+    "check": "cd backend && gofmt -l . && go vet ./... && go test ./... && cd ../frontend && npm run lint && npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
