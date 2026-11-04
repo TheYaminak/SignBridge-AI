@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "reference_source": "Diccionario de Lengua de Señas Dominicana (CONADIS/MINERD/ANSORDO). https://diccionariolsrd.conadis.gob.do/ redirects to https://diccionariolsrd.cc/. Index checked 2026-11-03. Entries are video-only; no movements are encoded here.",
+  "entries": [
+    {
+      "id": "HELLO",
+      "kind": "phrase_intent",
+      "text_es": "Hola",
+      "text_en": "Hello",
+      "status": "verified_sign",
+      "supported": true,
+      "training_target": true,
+      "training_status": "not_trained",
+      "recognizer": "knn-sequence-v1",
+      "sign_count": 1,
+      "components": ["HOLA"],
+      "requires_motion": "unknown",
+      "requires_non_manual": "unknown",
+      "references": [{ "gloss": "HOLA", "url": "https://diccionariolsrd.cc/diccionario/hola/" }],
+      "note": "Single sign documented in the LSRD dictionary."
+    },
+    {
+      "id": "NEED_HELP",
+      "kind": "phrase_intent",
+      "text_es": "Necesito ayuda",
+      "text_en": "I need help",
+      "status": "word_references",
+      "supported": true,
+      "training_target": true,
+      "training_status": "not_trained",
+      "recognizer": "knn-sequence-v1",
+      "sign_count": 2,
+      "components": ["NECESITAR", "AYUDA"],
+      "requires_motion": "yes",
+      "requires_non_manual": "unknown",
+      "references": [
+        { "gloss": "NECESITAR", "url": "https://diccionariolsrd.cc/diccionario/necesitar/" },
+        { "gloss": "AYUDA", "url": "https://diccionariolsrd.cc/diccionario/ayuda/" },
+        { "gloss": "AYUDAR", "url": "https://diccionariolsrd.cc/diccionario/ayudar/" }
+      ],
+      "note": "Words are documented individually; the phrase is not a dictionary entry. Proposed sequence: NECESITAR + AYUDA."
+    },
+    {
+      "id": "WHERE_BATHROOM",
+      "kind": "phrase_intent",
+      "text_es": "¿Dónde está el baño?",
+      "text_en": "Where is the bathroom?",
+      "status": "unavailable",
+      "supported": false,
+      "training_target": false,
+      "training_status": "not_trainable",
+      "recognizer": "",
+      "sign_count": 0,
+      "components": [],
+      "requires_motion": "unknown",
+      "requires_non_manual": "unknown",
+      "references": [],
+      "note": "No \"Baño\" or \"Dónde\" entry was found in the LSRD dictionary index, so this expression is not trainable."
+    },
+    {
+      "id": "THANK_YOU",
+      "kind": "phrase_intent",
+      "text_es": "Gracias",
+      "text_en": "Thank you",
+      "status": "verified_sign",
+      "supported": true,
+      "training_target": true,
+      "training_status": "not_trained",
+      "recognizer": "knn-sequence-v1",
+      "sign_count": 1,
+      "components": ["GRACIAS"],
+      "requires_motion": "unknown",
+      "requires_non_manual": "unknown",
+      "references": [{ "gloss": "GRACIAS", "url": "https://diccionariolsrd.cc/diccionario/gracias/" }],
+      "note": "Single sign documented in the LSRD dictionary."
+    },
+    {
+      "id": "NEED_DOCTOR",
+      "kind": "phrase_intent",
+      "text_es": "Necesito un médico",
+      "text_en": "I need a doctor",
+      "status": "word_references",
+      "supported": true,
+      "training_target": true,
+      "training_status": "not_trained",
+      "recognizer": "knn-sequence-v1",
+      "sign_count": 2,
+      "components": ["NECESITAR", "DOCTOR"],
+      "requires_motion": "yes",
+      "requires_non_manual": "unknown",
+      "references": [
+        { "gloss": "NECESITAR", "url": "https://diccionariolsrd.cc/diccionario/necesitar/" },
+        { "gloss": "DOCTOR", "url": "https://diccionariolsrd.cc/diccionario/doctor/" },
+        { "gloss": "MÉDICO", "url": "https://diccionariolsrd.cc/diccionario/medicoca/" }
+      ],
+      "note": "Words are documented individually; the phrase is not a dictionary entry. Proposed sequence: NECESITAR + DOCTOR (or MÉDICO)."
+    }
+  ]
+}

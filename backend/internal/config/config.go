@@ -31,6 +31,9 @@ type Config struct {
 	// MinSignConfidence is the lowest recognizer confidence accepted for
 	// interpretation; signs below it are discarded and reported back.
 	MinSignConfidence float64
+	// IntentMinConfidence: custom-sign predictions below this are always
+	// returned as uncertain.
+	IntentMinConfidence float64
 
 	Meta MetaConfig
 }
@@ -97,6 +100,15 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("config: MIN_SIGN_CONFIDENCE must be between 0 and 1")
 	}
 	cfg.MinSignConfidence = minConf
+
+	intentConf, err := getFloat("INTENT_MIN_CONFIDENCE", 0.75)
+	if err != nil {
+		return Config{}, err
+	}
+	if intentConf < 0 || intentConf > 1 {
+		return Config{}, fmt.Errorf("config: INTENT_MIN_CONFIDENCE must be between 0 and 1")
+	}
+	cfg.IntentMinConfidence = intentConf
 
 	return cfg, nil
 }

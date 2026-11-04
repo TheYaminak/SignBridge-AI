@@ -35,6 +35,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useSpeechSynthesis } from "@/hooks/use-speech-synthesis";
 import { apiClient, ApiError } from "@/lib/api-client";
+import { buildManualInterpretRequest } from "@/lib/api-requests";
 import { formatPercent, formatUsage } from "@/lib/format";
 import {
   OUTPUT_LANGUAGES,
@@ -106,7 +107,7 @@ export function ManualInterpretationTest() {
     speech.cancel();
     setRun({ kind: "running" });
     try {
-      const result = await apiClient.interpret({ signs, language, source: "manual" });
+      const result = await apiClient.interpret(buildManualInterpretRequest(signs, language));
       setRun({ kind: "success", result });
     } catch (err) {
       setRun(

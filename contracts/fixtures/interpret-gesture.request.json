@@ -1,0 +1,9 @@
+{
+  "signs": [
+    { "label": "Thumb_Up", "confidence": 0.92, "timestamp": 1730000000000 },
+    { "label": "Open_Palm", "confidence": 0.88, "timestamp": 1730000001500 }
+  ],
+  "language": "es",
+  "source": "camera",
+  "recognition_type": "gesture"
+}

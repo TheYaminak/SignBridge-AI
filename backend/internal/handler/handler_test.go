@@ -65,6 +65,7 @@ func newRouter(cfg routerConfig) http.Handler {
 	return NewRouter(Options{
 		Logger:             logger,
 		Interpreter:        service.NewMetaInterpreter(client, 0.6),
+		IntentInterpreter:  service.NewMetaIntentInterpreter(client, 0.75, logger),
 		Meta:               client,
 		Tester:             service.NewMetaConnectionTester(client),
 		AllowedOrigins:     []string{"http://localhost:3000"},

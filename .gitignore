@@ -30,3 +30,7 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Personal landmark datasets (exported from /training). Not committed by default.
+signbridge-dataset-*.json
+frontend/data/

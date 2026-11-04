@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiClient, ApiError } from "@/lib/api-client";
+import { REQUIRED_API_VERSION } from "@/types/api";
 
-export type BackendStatus = "checking" | "online" | "offline";
+export type BackendStatus = "checking" | "online" | "offline" | "outdated";
 
 interface HealthState {
   status: BackendStatus;
@@ -35,10 +36,15 @@ export function useBackendHealth(intervalMs = 15_000) {
           signal: controller.signal,
           timeoutMs: 5_000,
         });
+        // A backend that predates the current contract rejects new request
+        // fields ("unknown field ..."), so flag it instead of failing later.
+        const outdated = (res.api_version ?? 0) < REQUIRED_API_VERSION;
         setState({
-          status: res.status === "ok" ? "online" : "offline",
+          status: res.status !== "ok" ? "offline" : outdated ? "outdated" : "online",
           service: res.service,
-          error: null,
+          error: outdated
+            ? `Backend API version ${res.api_version ?? "1-2"} is older than required ${REQUIRED_API_VERSION}. Restart the Go backend.`
+            : null,
           lastCheckedAt: Date.now(),
         });
       } catch (err) {

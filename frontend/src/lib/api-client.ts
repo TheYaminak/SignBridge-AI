@@ -2,6 +2,9 @@ import { API_BASE_URL } from "@/lib/config";
 import type {
   ApiErrorBody,
   HealthResponse,
+  IntentRequest,
+  IntentResult,
+  IntentsResponse,
   MetaStatusResponse,
   MetaTestResponse,
 } from "@/types/api";
@@ -102,6 +105,19 @@ export const apiClient = {
   ): Promise<InterpretationResult> {
     return request<InterpretationResult>(
       "/api/v1/interpret",
+      { method: "POST", body: JSON.stringify(payload) },
+      { timeoutMs: 65_000, ...options },
+    );
+  },
+
+  intents(options?: RequestOptions): Promise<IntentsResponse> {
+    return request<IntentsResponse>("/api/v1/intents", { method: "GET" }, options);
+  },
+
+  /** Sends one recognized custom-sign intent (never video) to Go → Muse Spark. */
+  interpretIntent(payload: IntentRequest, options?: RequestOptions): Promise<IntentResult> {
+    return request<IntentResult>(
+      "/api/v1/intents/interpret",
       { method: "POST", body: JSON.stringify(payload) },
       { timeoutMs: 65_000, ...options },
     );

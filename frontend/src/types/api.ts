@@ -4,6 +4,76 @@ import type { TokenUsage } from "@/types/sign";
 export interface HealthResponse {
   status: "ok";
   service: string;
+  /** Request-contract version; missing on backends older than Phase 4. */
+  api_version?: number;
+}
+
+/** Contract version this frontend needs (see backend handler.APIVersion). */
+export const REQUIRED_API_VERSION = 3;
+
+export type VerificationStatus = "verified_sign" | "word_references" | "unavailable";
+
+export interface IntentReference {
+  gloss: string;
+  url: string;
+}
+
+export type FeatureRequirement = "yes" | "no" | "unknown";
+
+/** An entry of the vocabulary registry (GET /api/v1/intents, backend vocabulary.json). */
+export interface IntentInfo {
+  id: string;
+  /** "phrase_intent" today; "sign" is reserved for future single-sign entries. */
+  kind: "phrase_intent" | "sign";
+  text_es: string;
+  text_en: string;
+  status: VerificationStatus;
+  supported: boolean;
+  training_target: boolean;
+  training_status: string;
+  recognizer: string;
+  sign_count: number;
+  components: string[];
+  requires_motion: FeatureRequirement;
+  requires_non_manual: FeatureRequirement;
+  references: IntentReference[];
+  note: string;
+}
+
+export interface IntentsResponse {
+  version: number;
+  intents: IntentInfo[];
+  unknown: string;
+}
+
+/** Body of POST /api/v1/intents/interpret. */
+export interface IntentRequest {
+  recognition_type: "custom_sign";
+  intent: string;
+  confidence: number;
+  language: string;
+  raw_labels: string[];
+  source?: "camera" | "manual";
+  model_id?: string;
+}
+
+/** Response of POST /api/v1/intents/interpret. */
+export interface IntentResult {
+  intent: string;
+  raw_labels: string[];
+  confidence: number;
+  language: string;
+  text_es: string;
+  text_en: string;
+  uncertain: boolean;
+  source: "meta" | "local_fallback";
+  fallback_reason?: string;
+  model: string;
+  provider?: string;
+  latency_ms: number;
+  usage?: TokenUsage;
+  verification: { status: VerificationStatus; references: IntentReference[] };
+  prediction_note: string;
 }
 
 /** Shape of every error response returned by the Go backend. */

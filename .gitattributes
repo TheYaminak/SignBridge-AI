@@ -1,3 +1,6 @@
 # Model bundles are binary; never convert line endings.
 *.task binary
 *.wasm binary
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
