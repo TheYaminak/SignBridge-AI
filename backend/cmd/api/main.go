@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/signbridge-ai/backend/internal/config"
 	"github.com/signbridge-ai/backend/internal/handler"
@@ -19,6 +20,11 @@ import (
 )
 
 func main() {
+	// `api healthcheck` lets the Docker HEALTHCHECK probe the server from a
+	// distroless image that has no shell, curl, or wget.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheck())
+	}
 	if err := run(); err != nil {
 		slog.Error("server exited with error", "error", err)
 		os.Exit(1)
@@ -26,8 +32,11 @@ func main() {
 }
 
 func run() error {
-	if err := config.LoadDotEnv(".env"); err != nil {
-		return err
+	// backend/.env wins over the repo-root .env; real env vars win over both.
+	for _, path := range []string{".env", "../.env"} {
+		if err := config.LoadDotEnv(path); err != nil {
+			return err
+		}
 	}
 	cfg, err := config.Load()
 	if err != nil {
@@ -42,13 +51,17 @@ func run() error {
 		Model:   cfg.Meta.Model,
 		BaseURL: cfg.Meta.BaseURL,
 		Timeout: cfg.Meta.Timeout,
+		Logger:  logger,
 	})
 
 	router := handler.NewRouter(handler.Options{
-		Logger:         logger,
-		Interpreter:    service.NewMetaInterpreter(metaClient),
-		AllowedOrigins: cfg.CORSAllowedOrigins,
-		RequestTimeout: cfg.RequestTimeout,
+		Logger:             logger,
+		Interpreter:        service.NewMetaInterpreter(metaClient, cfg.MinSignConfidence),
+		Meta:               metaClient,
+		Tester:             service.NewMetaConnectionTester(metaClient),
+		AllowedOrigins:     cfg.CORSAllowedOrigins,
+		RequestTimeout:     cfg.RequestTimeout,
+		EnableDevEndpoints: !cfg.IsProduction(),
 	})
 
 	srv := &http.Server{
@@ -70,6 +83,8 @@ func run() error {
 			"env", cfg.Env,
 			"cors_origins", cfg.CORSAllowedOrigins,
 			"meta_configured", cfg.Meta.Configured(),
+			"meta_model", cfg.Meta.Model,
+			"dev_endpoints", !cfg.IsProduction(),
 		)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
@@ -91,6 +106,23 @@ func run() error {
 	}
 	logger.Info("server stopped")
 	return nil
+}
+
+func healthcheck() int {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://" + net.JoinHostPort("127.0.0.1", port) + "/health")
+	if err != nil {
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }
 
 func parseLevel(s string) slog.Level {

@@ -2,6 +2,8 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Self-contained server bundle for the Docker image (.next/standalone).
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

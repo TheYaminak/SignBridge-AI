@@ -1,7 +1,9 @@
 import { Info, Lock } from "lucide-react";
 
+import { DeveloperTools } from "@/components/dev/developer-tools";
 import { SiteHeader } from "@/components/site-header";
 import { TranslationWorkspace } from "@/components/workspace/translation-workspace";
+import { DEV_TOOLS_ENABLED } from "@/lib/config";
 
 export default function Home() {
   return (
@@ -42,6 +44,8 @@ export default function Home() {
         >
           <TranslationWorkspace />
         </section>
+
+        {DEV_TOOLS_ENABLED && <DeveloperTools />}
       </main>
 
       <footer className="border-t">

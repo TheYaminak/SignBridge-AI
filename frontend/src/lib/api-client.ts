@@ -1,5 +1,10 @@
 import { API_BASE_URL } from "@/lib/config";
-import type { ApiErrorBody, HealthResponse } from "@/types/api";
+import type {
+  ApiErrorBody,
+  HealthResponse,
+  MetaStatusResponse,
+  MetaTestResponse,
+} from "@/types/api";
 import type {
   InterpretationRequest,
   InterpretationResult,
@@ -98,7 +103,25 @@ export const apiClient = {
     return request<InterpretationResult>(
       "/api/v1/interpret",
       { method: "POST", body: JSON.stringify(payload) },
-      { timeoutMs: 30_000, ...options },
+      { timeoutMs: 65_000, ...options },
+    );
+  },
+
+  /** Configuration status only; does not call Meta or use tokens. */
+  metaStatus(options?: RequestOptions): Promise<MetaStatusResponse> {
+    return request<MetaStatusResponse>(
+      "/api/v1/meta/status",
+      { method: "GET" },
+      options,
+    );
+  },
+
+  /** Development only: makes a real Meta Model API request via the backend. */
+  metaTest(options?: RequestOptions): Promise<MetaTestResponse> {
+    return request<MetaTestResponse>(
+      "/api/v1/meta/test",
+      { method: "POST" },
+      { timeoutMs: 65_000, ...options },
     );
   },
 };
