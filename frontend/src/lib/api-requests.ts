@@ -30,7 +30,7 @@ export function buildIntentRequest(input: {
   modelId: string;
 }): IntentRequest {
   return {
-    recognition_type: "custom_sign",
+    recognition_type: "custom_sign_sequence",
     intent: input.intent,
     confidence: Math.round(input.confidence * 1000) / 1000,
     language: input.language,

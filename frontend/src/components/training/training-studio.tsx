@@ -34,7 +34,8 @@ import type { FrameObservation } from "@/lib/vision/types";
 import type { IntentInfo } from "@/types/api";
 import { cn } from "@/lib/utils";
 
-const RECORD_MS = DEFAULT_FEATURE_CONFIG.windowMs;
+/** Selectable recording lengths. Keep one length per dataset: the model's real-time window is the median sample length. */
+const DURATIONS_MS = [2000, 3000, 4000, 5000];
 const COUNTDOWN_S = 3;
 const MIN_PRESENCE = 0.5;
 
@@ -56,13 +57,14 @@ const UNKNOWN_INFO: IntentInfo = {
   recognizer: "",
   sign_count: 0,
   components: [],
+  sequence_verified: false,
   requires_motion: "unknown",
   requires_non_manual: "unknown",
   references: [],
   note: "Rejection class: resting hands, transitions, ordinary movement, generic gestures, and no hands in view.",
 };
 
-function instructions(info: IntentInfo): string[] {
+function instructions(info: IntentInfo, recordMs: number): string[] {
   if (info.id === UNKNOWN_LABEL) {
     return [
       "Do anything that is NOT one of the intents: rest your hands, scratch, adjust hair, wave, show 👍 or ✋, move between signs.",
@@ -72,12 +74,16 @@ function instructions(info: IntentInfo): string[] {
   }
   const base = [
     "Open the dictionary entry below and watch the sign first.",
-    `Click Record, wait for 3-2-1, then sign once at natural speed within ${RECORD_MS / 1000} seconds.`,
+    `Click Record, wait for 3-2-1, then perform the complete expression once at natural speed within ${recordMs / 1000} seconds.`,
     "Start and end with your hands relaxed. Keep hands and upper body in frame.",
     "Repeat many times; vary distance and position slightly between takes.",
   ];
   if (info.sign_count > 1) {
-    base.splice(1, 0, `This phrase is a proposed sequence of ${info.sign_count} documented signs (${info.references.map((r) => r.gloss).slice(0, 2).join(" + ")}). Perform them in one continuous take.`);
+    base.splice(
+      1,
+      0,
+      `Experimental intent: the working sequence ${info.components.join(" + ")} uses individually documented signs, but the LSRD order for the full phrase is not verified. Perform the whole sequence in one continuous take, and confirm it with an LSRD signer before relying on it.`,
+    );
   }
   return base;
 }
@@ -88,7 +94,7 @@ function statusBadge(info: IntentInfo) {
     case "verified_sign":
       return <Badge variant="outline" className="border-success/50 text-success">Verified sign (LSRD)</Badge>;
     case "word_references":
-      return <Badge variant="outline" className="border-warning/50 text-warning">Words verified · phrase proposed</Badge>;
+      return <Badge variant="outline" className="border-warning/50 text-warning">Experimental intent · sign order not verified</Badge>;
     default:
       return <Badge variant="destructive">Unavailable</Badge>;
   }
@@ -107,6 +113,7 @@ export function TrainingStudio() {
   // Empty until the user picks; defaults to the first registry training target.
   const [picked, setPicked] = useState<string | null>(null);
   const [signerId, setSignerId] = useState("signer-1");
+  const [recordMs, setRecordMs] = useState(DEFAULT_FEATURE_CONFIG.windowMs);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [rec, setRec] = useState<RecState>({ phase: "idle" });
   const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -208,10 +215,11 @@ export function TrainingStudio() {
         startRef.current = performance.now();
         recordingRef.current = true;
         setRec({ phase: "recording", progress: 0 });
-        for (let t = 100; t < RECORD_MS; t += 100) {
-          timersRef.current.push(setTimeout(() => setRec({ phase: "recording", progress: t / RECORD_MS }), t));
+        const duration = recordMs;
+        for (let t = 100; t < duration; t += 100) {
+          timersRef.current.push(setTimeout(() => setRec({ phase: "recording", progress: t / duration }), t));
         }
-        timersRef.current.push(setTimeout(() => finish(label, sid, refs), RECORD_MS));
+        timersRef.current.push(setTimeout(() => finish(label, sid, refs), duration));
       }, COUNTDOWN_S * 1000),
     );
   };
@@ -335,7 +343,7 @@ export function TrainingStudio() {
 
             {trainable ? (
               <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-                {instructions(info).map((line) => (
+                {instructions(info, recordMs).map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ol>
@@ -351,6 +359,24 @@ export function TrainingStudio() {
               <div className="flex flex-col gap-1">
                 <label htmlFor="signer-id" className="text-xs text-muted-foreground">Signer ID (no real names needed)</label>
                 <Input id="signer-id" value={signerId} onChange={(e) => setSignerId(e.target.value)} className="w-40" disabled={busy} maxLength={32} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span id="duration-label" className="text-xs text-muted-foreground">Recording length</span>
+                <div role="radiogroup" aria-labelledby="duration-label" className="flex gap-1">
+                  {DURATIONS_MS.map((ms) => (
+                    <Button
+                      key={ms}
+                      role="radio"
+                      aria-checked={recordMs === ms}
+                      size="sm"
+                      variant={recordMs === ms ? "default" : "outline"}
+                      onClick={() => setRecordMs(ms)}
+                      disabled={busy}
+                    >
+                      {ms / 1000} s
+                    </Button>
+                  ))}
+                </div>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSessionId(null)} disabled={busy} title="Start a new recording session (used to split validation data)">
                 New session
@@ -375,7 +401,7 @@ export function TrainingStudio() {
               )}
               {rec.phase === "idle" && (
                 <p className="text-sm text-muted-foreground">
-                  {ready ? `Ready. Recording lasts ${RECORD_MS / 1000} s after a 3 s countdown.` : "Start the camera and wait for hand tracking to load."}
+                  {ready ? `Ready. Recording lasts ${recordMs / 1000} s after a 3 s countdown.` : "Start the camera and wait for hand tracking to load."}
                 </p>
               )}
             </div>

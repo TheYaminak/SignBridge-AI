@@ -9,11 +9,13 @@ import { describe, it } from "node:test";
 import { toDataset, validateDataset } from "./dataset";
 import { evaluate, splitDataset, trainAndEvaluate } from "./evaluate";
 import { DEFAULT_FEATURE_CONFIG, featureLength, resample, sequenceFeatures } from "./features";
-import { isSignModel, predict, trainModel } from "./knn";
+import { isSignModel, predict, trainModel, windowFromSamples } from "./knn";
 import { toLandmarkFrame } from "./landmarks";
 import { RealtimeSignRecognizer } from "./realtime";
 import type { LandmarkFrame, Sample } from "./types";
 import { isInterpretable, modelCoverage, trainingLabels } from "./vocabulary";
+import { acceptsRecognition, displayPhase, transition, type PipelinePhase } from "./pipeline";
+import { pickVoice } from "../languages";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -324,5 +326,77 @@ describe("vocabulary registry", () => {
     assert.equal(m.target, "phrase_intent");
     assert.equal(m.recognizer, "knn-sequence-v1");
     assert.ok(registry.filter((e) => e.training_target).every((e) => e.recognizer === m.recognizer));
+  });
+});
+
+describe("recognition pipeline state machine", () => {
+  it("runs the automatic happy path", () => {
+    let p: PipelinePhase = "recognizing";
+    p = transition(p, { type: "recognized" });
+    assert.equal(p, "confirmed");
+    p = transition(p, { type: "interpret" });
+    assert.equal(p, "interpreting");
+    p = transition(p, { type: "result", speak: true });
+    assert.equal(p, "speaking");
+    p = transition(p, { type: "speech_end" });
+    assert.equal(p, "cooldown");
+    p = transition(p, { type: "cooldown_end" });
+    assert.equal(p, "recognizing");
+  });
+
+  it("ignores recognitions until it is back in RECOGNIZING", () => {
+    for (const p of ["confirmed", "interpreting", "speaking", "cooldown"] as PipelinePhase[]) {
+      assert.equal(acceptsRecognition(p), false);
+      assert.equal(transition(p, { type: "recognized" }), p);
+    }
+    assert.equal(acceptsRecognition("recognizing"), true);
+  });
+
+  it("does not start a second interpretation or overlap speech", () => {
+    assert.equal(transition("interpreting", { type: "interpret" }), "interpreting");
+    assert.equal(transition("speaking", { type: "interpret" }), "speaking");
+    assert.equal(transition("interpreting", { type: "replay" }), "interpreting");
+  });
+
+  it("goes to cooldown without speech when muted or on failure", () => {
+    assert.equal(transition("interpreting", { type: "result", speak: false }), "cooldown");
+    assert.equal(transition("interpreting", { type: "failed" }), "cooldown");
+  });
+
+  it("reset (clear / camera stop) always returns to RECOGNIZING; IDLE is derived from the camera", () => {
+    assert.equal(transition("speaking", { type: "reset" }), "recognizing");
+    assert.equal(displayPhase("recognizing", false), "idle");
+    assert.equal(displayPhase("recognizing", true), "recognizing");
+    assert.equal(displayPhase("speaking", false), "speaking");
+  });
+});
+
+describe("voice selection", () => {
+  const v = (lang: string, name = lang) => ({ lang, name }) as SpeechSynthesisVoice;
+
+  it("prefers es-DO, then other Spanish voices", () => {
+    assert.equal(pickVoice([v("en-US"), v("es-ES"), v("es-DO")], "es-DO")?.lang, "es-DO");
+    assert.equal(pickVoice([v("en-US"), v("es-ES"), v("es-MX")], "es-DO")?.lang, "es-MX");
+    assert.equal(pickVoice([v("en-US"), v("es_AR")], "es-DO")?.lang, "es_AR");
+  });
+
+  it("prefers en-US for English and returns null when nothing matches", () => {
+    assert.equal(pickVoice([v("en-GB"), v("en-US")], "en-US")?.lang, "en-US");
+    assert.equal(pickVoice([v("fr-FR")], "es-DO"), null);
+  });
+});
+
+describe("configurable recording length", () => {
+  it("sets the real-time window from the median sample length", () => {
+    const at = (ms: number) => ({ ...makeSample("HELLO", ms), duration_ms: ms });
+    assert.equal(windowFromSamples([at(3900), at(4000), at(4100)]), 4000);
+    assert.equal(windowFromSamples([at(500)]), 1500);
+    assert.equal(windowFromSamples([]), 3000);
+    assert.equal(trainModel([at(2000), at(2000), makeSample("UNKNOWN", 1)].map((s) => ({ ...s, duration_ms: 2000 }))).feature.windowMs, 2000);
+  });
+
+  it("warns when recording lengths are mixed", () => {
+    const mixed = [{ ...makeSample("HELLO", 1), duration_ms: 2000 }, { ...makeSample("HELLO", 2), duration_ms: 5000 }, { ...makeSample("HELLO", 3), duration_ms: 3000 }];
+    assert.ok(validateDataset(toDataset(mixed)).warnings.some((w) => w.includes("Recording lengths vary")));
   });
 });

@@ -12,7 +12,7 @@ import (
 
 func intentReq(intent string, conf float64) domain.IntentRequest {
 	return domain.IntentRequest{
-		RecognitionType: "custom_sign", Intent: intent, Confidence: conf,
+		RecognitionType: "custom_sign_sequence", Intent: intent, Confidence: conf,
 		Language: "es", RawLabels: []string{intent}, Source: domain.SourceCamera,
 	}
 }
@@ -31,6 +31,13 @@ func TestInterpretIntentMeta(t *testing.T) {
 	}
 	if got.Verification.Status != domain.StatusWordReferences || len(got.Verification.References) == 0 || got.PredictionNote == "" {
 		t.Errorf("verification = %+v", got.Verification)
+	}
+	// NEED_HELP's LSRD sign order is unverified: the result must say so.
+	if !got.Experimental || got.Verification.SequenceVerified {
+		t.Errorf("NEED_HELP must be experimental, got %+v", got.Verification)
+	}
+	if !strings.Contains(client.lastReq.Messages[1].Content, `"experimental":true`) {
+		t.Error("model must be told the intent is experimental")
 	}
 	prompt := client.lastReq.Messages[0].Content
 	for _, rule := range []string{"Preserve the intent exactly", "medical or safety details", "did not see any video"} {
@@ -123,5 +130,23 @@ func TestInterpretIntentRejections(t *testing.T) {
 				t.Error("Meta must not be called for rejected requests")
 			}
 		})
+	}
+}
+
+func TestInterpretIntentVerifiedSignIsNotExperimental(t *testing.T) {
+	got, err := NewMetaIntentInterpreter(okClient(validIntentOutput), 0.75, nil).InterpretIntent(context.Background(), intentReq("HELLO", 0.9))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Experimental || !got.Verification.SequenceVerified {
+		t.Errorf("HELLO is a documented single sign: %+v", got.Verification)
+	}
+}
+
+func TestInterpretIntentAcceptsLegacyRecognitionType(t *testing.T) {
+	req := intentReq("HELLO", 0.9)
+	req.RecognitionType = "custom_sign"
+	if _, err := NewMetaIntentInterpreter(okClient(validIntentOutput), 0.75, nil).InterpretIntent(context.Background(), req); err != nil {
+		t.Fatalf("Phase 4 clients must keep working: %v", err)
 	}
 }

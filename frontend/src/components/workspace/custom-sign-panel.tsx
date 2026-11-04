@@ -12,6 +12,7 @@ import {
   Sparkles,
   Square,
   Volume2,
+  VolumeX,
 } from "lucide-react";
 
 import { StatusDot } from "@/components/status-dot";
@@ -28,9 +29,27 @@ import { DEV_TOOLS_ENABLED } from "@/lib/config";
 import { formatPercent } from "@/lib/format";
 import { OUTPUT_LANGUAGES, type OutputLanguage } from "@/lib/languages";
 import type { Prediction } from "@/lib/signs/knn";
+import type { DisplayPhase } from "@/lib/signs/pipeline";
 import { UNKNOWN_LABEL } from "@/lib/signs/types";
 import { modelCoverage } from "@/lib/signs/vocabulary";
 import type { IntentInfo, IntentResult, VerificationStatus } from "@/types/api";
+
+export interface LastSpoken {
+  intent: string;
+  text: string;
+  language: OutputLanguage;
+  source: IntentResult["source"];
+  at: number;
+}
+
+const PHASES: { id: DisplayPhase; label: string }[] = [
+  { id: "idle", label: "Idle" },
+  { id: "recognizing", label: "Recognizing" },
+  { id: "confirmed", label: "Confirmed" },
+  { id: "interpreting", label: "Interpreting" },
+  { id: "speaking", label: "Speaking" },
+  { id: "cooldown", label: "Cooldown" },
+];
 
 export interface RecognizedIntent {
   intent: string;
@@ -52,7 +71,20 @@ interface CustomSignPanelProps {
   onLanguageChange: (language: OutputLanguage) => void;
   onInterpret: () => void;
   onClear: () => void;
-  speech: { supported: boolean; speaking: boolean; onSpeak: () => void; onStop: () => void };
+  phase: DisplayPhase;
+  autoSpeak: boolean;
+  onToggleAutoSpeak: () => void;
+  muted: boolean;
+  onToggleMuted: () => void;
+  lastSpoken: LastSpoken | null;
+  speech: {
+    supported: boolean;
+    speaking: boolean;
+    error: string | null;
+    voiceLabel: string | null;
+    onSpeak: () => void;
+    onStop: () => void;
+  };
 }
 
 const REASONS: Record<Prediction["reason"], string> = {
@@ -88,6 +120,12 @@ export function CustomSignPanel({
   onLanguageChange,
   onInterpret,
   onClear,
+  phase,
+  autoSpeak,
+  onToggleAutoSpeak,
+  muted,
+  onToggleMuted,
+  lastSpoken,
   speech,
 }: CustomSignPanelProps) {
   const info = recognized ? intents?.find((i) => i.id === recognized.intent) : undefined;
@@ -167,6 +205,51 @@ export function CustomSignPanel({
           </Badge>
         </div>
 
+        <div className="flex flex-col gap-2 rounded-lg border p-3">
+          <ol aria-label="Recognition state" className="flex flex-wrap gap-1 text-[11px]">
+            {PHASES.map((p) => (
+              <li
+                key={p.id}
+                aria-current={phase === p.id ? "step" : undefined}
+                className={
+                  phase === p.id
+                    ? "rounded-full bg-primary px-2 py-0.5 font-medium text-primary-foreground"
+                    : "rounded-full px-2 py-0.5 text-muted-foreground"
+                }
+              >
+                {p.label}
+              </li>
+            ))}
+          </ol>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant={autoSpeak ? "default" : "outline"} aria-pressed={autoSpeak} onClick={onToggleAutoSpeak}>
+              <Sparkles aria-hidden="true" />
+              Auto speak {autoSpeak ? "on" : "off"}
+            </Button>
+            <Button size="sm" variant={muted ? "destructive" : "outline"} aria-pressed={muted} onClick={onToggleMuted}>
+              {muted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}
+              {muted ? "Muted" : "Sound on"}
+            </Button>
+            <span className="text-xs text-muted-foreground" aria-live="polite">
+              {speech.speaking ? `Speaking… ${speech.voiceLabel ?? ""}` : autoSpeak ? "Recognized intents are interpreted and spoken automatically." : "Interpret and replay manually."}
+            </span>
+          </div>
+          {lastSpoken && (
+            <p className="text-xs text-muted-foreground">
+              Last spoken: <span lang={lastSpoken.language} className="font-medium text-foreground">“{lastSpoken.text}”</span> ({lastSpoken.intent},{" "}
+              {lastSpoken.language === "es" ? "Español" : "English"}, {lastSpoken.source === "meta" ? "Muse Spark" : "local fallback"},{" "}
+              {new Date(lastSpoken.at).toLocaleTimeString()})
+            </p>
+          )}
+          {speech.error && (
+            <p role="alert" className="flex items-center gap-1.5 text-xs text-destructive">
+              <AlertTriangle className="size-3.5" aria-hidden="true" />
+              {speech.error}
+            </p>
+          )}
+          {!speech.supported && <p className="text-xs text-destructive">This browser has no speech synthesis; text output only.</p>}
+        </div>
+
         {model.status === "ready" && (
           <section aria-labelledby="live-heading" className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
@@ -198,6 +281,9 @@ export function CustomSignPanel({
                   <p className="text-sm text-muted-foreground">Label meaning: “{info.text_es}” / “{info.text_en}”</p>
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <VerificationBadge status={info.status} />
+                    {!info.sequence_verified && (
+                      <Badge variant="outline" className="border-warning/50 text-warning">Experimental intent · LSRD sign order not verified</Badge>
+                    )}
                     {info.references.map((r) => (
                       <a key={r.url} href={r.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline">
                         {r.gloss} <ExternalLink className="size-3" aria-hidden="true" />
@@ -243,6 +329,7 @@ export function CustomSignPanel({
               )}
               {result.source === "meta" && <span>{result.latency_ms} ms</span>}
               {result.uncertain && <Badge variant="outline" className="border-warning/50 text-warning">Uncertain</Badge>}
+              {result.experimental && <Badge variant="outline" className="border-warning/50 text-warning">Experimental intent</Badge>}
             </div>
           )}
           {result && <p className="text-xs text-muted-foreground">{result.prediction_note}</p>}
@@ -266,8 +353,8 @@ export function CustomSignPanel({
             <Square aria-hidden="true" />Stop speaking
           </Button>
         ) : (
-          <Button size="lg" onClick={speech.onSpeak} disabled={!speech.supported || !result}>
-            <Volume2 aria-hidden="true" />Speak
+          <Button size="lg" onClick={speech.onSpeak} disabled={!speech.supported || !result || interpreting}>
+            <Volume2 aria-hidden="true" />Replay
           </Button>
         )}
         <Button variant="outline" size="lg" onClick={onClear} disabled={!recognized && !result && !error}>

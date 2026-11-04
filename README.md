@@ -5,7 +5,7 @@ Breaking communication barriers through computer vision and artificial intellige
 
 SignBridge AI is an **experimental, limited-vocabulary** recognizer for a few high-utility expressions in **Dominican Sign Language (LSRD)**. It works in the browser with a webcam and turns a recognized expression into short, natural Spanish or English text and speech. It is a prototype for the Meta Global AI Developer Hackathon 2026. It does **not** translate unrestricted sign language and is **not a replacement for a qualified sign language interpreter**.
 
-## How it works: four separate parts
+## How it works: five separate parts
 
 | | Component | What it does | Where |
 | --- | --- | --- | --- |
@@ -13,19 +13,22 @@ SignBridge AI is an **experimental, limited-vocabulary** recognizer for a few hi
 | **B** | **Our custom-trained sign classifier** | A k-nearest-neighbor classifier over normalized landmark *sequences*, trained on recordings **you** make on `/training`. It predicts one of our intents or `UNKNOWN`. | Browser (`lib/signs/`) |
 | **C** | **Go backend orchestration** | Validates the predicted intent, attaches its LSRD verification status, calls Muse Spark, validates the reply, and falls back to a clearly labeled local phrase if Meta is unavailable. | Go (`backend/`) |
 | **D** | **Meta Muse Spark** (`muse-spark-1.3`) | Turns the predicted intent into a short, accessible message in Spanish and English, phrased tentatively when uncertain. | Meta Model API, called only by Go |
+| **E** | **Browser SpeechSynthesis** | Speaks the message automatically in the selected language: an es-DO voice when installed (falling back to another Spanish voice), or en-US. | Browser |
 
 **Muse Spark was not fine-tuned and does no sign recognition.** It never sees video or landmarks, only the predicted intent label, its canonical phrase, and the confidence. Recognition is done entirely by part B, which runs in your browser.
 
-## Status: Phase 4
+## Status: Phase 5
 
 | Area | State |
 | --- | --- |
 | Webcam, MediaPipe hand tracking, skeleton overlay, generic gestures | ✅ Done (Phase 3) |
-| Go ↔ frontend JSON contract: shared fixtures, regression tests, outdated-backend detection | ✅ Fixed |
-| `/training`: landmark capture, countdown, per-class counts, delete, export/import | ✅ Done |
-| Custom classifier: training, held-out evaluation, confusion matrix, model save/load | ✅ Done |
-| Real-time custom recognition: rolling window, rejection, stabilization | ✅ Done |
-| Go `/api/v1/intents/interpret` → Muse Spark, validated JSON, local fallback | ✅ Done, live verified |
+| Go ↔ frontend JSON contract: shared fixtures, regression tests, outdated-backend detection | ✅ Fixed and re-verified (`custom_sign_sequence`) |
+| `/training`: complete-expression capture, configurable length (2–5 s), countdown, counts, delete, export/import | ✅ Done |
+| Phrase-level temporal classifier: training, held-out evaluation, confusion matrix, model save/load | ✅ Done |
+| Real-time recognition: rolling window, rejection, stabilization, rest-based reset | ✅ Done |
+| Recognition state machine with **automatic speech** (Auto speak, Mute, Replay, last spoken, audio errors) | ✅ Done |
+| Go `/api/v1/intents/interpret` → Muse Spark, validated JSON, labeled local fallback | ✅ Done, live verified |
+| Vocabulary registry (`vocabulary.json`) driving labels, training targets, and verification | ✅ Done |
 | A trained model for real LSRD signs | ⏳ **Not included.** It needs your recordings (see [Training workflow](#training-workflow)). |
 
 ### Supported expressions (checked against the LSRD dictionary)
@@ -34,16 +37,18 @@ SignBridge AI is an **experimental, limited-vocabulary** recognizer for a few hi
 | --- | --- | --- | --- |
 | `HELLO` | Hola / Hello | ✅ **Single verified sign** | [HOLA](https://diccionariolsrd.cc/diccionario/hola/) |
 | `THANK_YOU` | Gracias / Thank you | ✅ **Single verified sign** | [GRACIAS](https://diccionariolsrd.cc/diccionario/gracias/) |
-| `NEED_HELP` | Necesito ayuda / I need help | ⚠️ **Words verified, phrase proposed** (2 signs) | [NECESITAR](https://diccionariolsrd.cc/diccionario/necesitar/), [AYUDA](https://diccionariolsrd.cc/diccionario/ayuda/), [AYUDAR](https://diccionariolsrd.cc/diccionario/ayudar/) |
-| `NEED_DOCTOR` | Necesito un médico / I need a doctor | ⚠️ **Words verified, phrase proposed** (2 signs) | [NECESITAR](https://diccionariolsrd.cc/diccionario/necesitar/), [DOCTOR](https://diccionariolsrd.cc/diccionario/doctor/), [MÉDICO](https://diccionariolsrd.cc/diccionario/medicoca/) |
-| `WHERE_BATHROOM` | ¿Dónde está el baño? / Where is the bathroom? | ❌ **Unavailable** | No "Baño" or "Dónde" entry found, so recording is disabled |
-| `UNKNOWN` | (rejection class) | n/a | Rest, transitions, unrelated movement, generic gestures |
+| `NEED_HELP` | Necesito ayuda / I need help | ⚠️ **Experimental intent**: both words are documented, but the **LSRD sign order is not verified** | [NECESITAR](https://diccionariolsrd.cc/diccionario/necesitar/), [AYUDA](https://diccionariolsrd.cc/diccionario/ayuda/), [AYUDAR](https://diccionariolsrd.cc/diccionario/ayudar/) |
+| `NEED_DOCTOR` | Necesito un médico / I need a doctor | ⚠️ **Experimental intent**: both words are documented, but the **LSRD sign order is not verified** | [NECESITAR](https://diccionariolsrd.cc/diccionario/necesitar/), [DOCTOR](https://diccionariolsrd.cc/diccionario/doctor/), [MÉDICO](https://diccionariolsrd.cc/diccionario/medicoca/) |
+| `WHERE_BATHROOM` | ¿Dónde está el baño? / Where is the bathroom? | ❌ **Unsupported** | No "Baño" or "Dónde" entry (only Bañar, Bañarse, Bañera, [Inodoro](https://diccionariolsrd.cc/diccionario/inodoro/)), so recording is disabled |
+| `UNKNOWN` | (rejection class) | n/a | Rest, transitions, incomplete sequences, unrelated movement, generic gestures |
 
-How this was checked (2026-11-03):
+How this was checked (2026-11-03/04):
 
-- The official address `https://diccionariolsrd.conadis.gob.do/` redirects (HTTP 301) to `https://diccionariolsrd.cc/`. That site is the dictionary built by CONADIS, MINERD, and ANSORDO (© Consejo Nacional de Discapacidad). We read its alphabetical and category index (1,466 entries) as text.
-- **No phrase entries exist** for the requested expressions. Only individual words are documented, so `NEED_HELP` and `NEED_DOCTOR` are our proposed sequences of two documented signs.
-- Sign descriptions on the site are **video only**. We did not encode, describe, or guess any movement, handshape, location, or facial expression. You record your own examples while watching the dictionary videos.
+- The official address `https://diccionariolsrd.conadis.gob.do/` redirects (HTTP 301) to `https://diccionariolsrd.cc/` ([digital dictionary](https://diccionariolsrd.cc/diccionario-digital/)). That site is the dictionary built by CONADIS, MINERD, and ANSORDO (© Consejo Nacional de Discapacidad). We read its alphabetical and category index (1,466 entries) as text.
+- **No phrase entries exist** for any of the requested expressions; only individual words are documented. We did **not** assume that Spanish word order is LSRD grammar. The working sequences for `NEED_HELP` (NECESITAR + AYUDA) and `NEED_DOCTOR` (NECESITAR + DOCTOR) are marked `sequence_verified: false` and shown in the UI as **experimental communication intents**. A Deaf LSRD signer or interpreter should confirm them before they are treated as LSRD.
+- `NEED_HELP` is **not** mapped to the single sign AYUDA. The intent is trained only on full recordings of the whole expression.
+- **Sign videos were not analyzed.** Entries are video only, and the page bodies weren't readable as text. We didn't download, inspect, or process any video. So hand configuration, palm orientation, start and end positions, movement direction, repetitions, location, and facial expression are **not documented here**. The registry records `requires_motion` / `requires_non_manual` as `unknown` unless known by construction (two-sign phrases are temporal).
+- **No reference-video training pipeline was built.** The site shows a copy-protection notice ("¡¡El contenido está protegido!!") and states no machine-learning license, so its videos are not used. Training uses only your own webcam recordings. A local, explicitly authorized video could later be processed through the same MediaPipe pipeline; that remains future work.
 - No dictionary media was downloaded, scraped, or redistributed. Only links are included.
 - The index search was manual. "Not found" means not present in the index we could read.
 
@@ -246,7 +251,7 @@ Gestures are **only sent to the Go API when the user clicks "Interpret recognize
 
 1. Open `http://localhost:3000/training` and start the camera.
 2. Pick an intent. The page shows its Spanish label, LSRD status, dictionary links, and recording instructions. `WHERE_BATHROOM` can't be recorded.
-3. Click **Record**. After a 3-2-1 countdown, the page captures **3 seconds** of MediaPipe landmarks and stops automatically.
+3. Choose a **recording length** (2, 3, 4, or 5 s; default 3 s; use 4–5 s for two-sign phrases) and click **Record**. After a 3-2-1 countdown, the page captures the **complete expression** as MediaPipe landmarks and stops automatically. Keep one length per dataset: the model's real-time window is set to the median sample length, and the page warns if lengths are mixed.
 4. Takes where hands are visible in less than 50% of frames are rejected, except for `UNKNOWN`.
 5. Repeat. The page shows per-class counts against the recommended **20–30**, and you can delete bad takes.
 6. Click **New session** (or reload) partway through each class, so validation can hold out whole sessions.
@@ -315,10 +320,32 @@ The main page loads the model trained in this browser first, then the bundled fi
 
 `lib/signs/realtime.ts`:
 
-- **Rolling window:** keeps the last 3 s of landmarks and classifies every 150 ms once the window is at least 80% full.
+This uses Option A, **phrase-level** recognition: the model is trained on recordings of complete expressions, so a multi-sign phrase is recognized as one temporal pattern, never from a single sign or pose.
+
+- **Rolling window:** keeps the last *window* of landmarks (the model's median sample length, e.g. 3 s) and classifies every 150 ms once the window is at least 80% full. Recordings of different lengths are time-normalized to 16 frames.
 - **Stabilization:** an intent is recognized after 3 consecutive identical accepted predictions.
-- **Reset:** after a recognition the window is cleared, and the same intent isn't emitted again until `UNKNOWN` or "no hands" is seen. There's a 1.5 s cooldown between recognitions.
-- **Interpretation is explicit:** nothing is sent to Go or Meta until you click **Interpret recognized intent**.
+- **Boundaries and reset:** an expression ends when it is confirmed. The window is then cleared, and the same intent isn't emitted again until `UNKNOWN` or "no hands" is seen (hands at rest or out of view). There's a 1.5 s cooldown between recognitions.
+
+### Automatic multilingual speech
+
+`lib/signs/pipeline.ts` implements the recognition state machine:
+
+```
+IDLE (camera off)
+RECOGNIZING ─stable intent─▶ CONFIRMED ─auto speak or "Interpret"─▶ INTERPRETING ─Go → Muse Spark─▶ SPEAKING ─end─▶ COOLDOWN (1.5 s) ─▶ RECOGNIZING
+```
+
+- **Auto speak (on by default):** a confirmed intent goes to Go → Muse Spark automatically, and the returned text in the selected language is spoken. HELLO says "Hola" in Spanish and "Hello" in English.
+- **No repeats:** new recognitions are accepted **only in RECOGNIZING**. A held sign, or a sign made while interpreting, speaking, or cooling down, never triggers another Meta request or overlapping speech, and the same expression needs a rest or reset before it can be spoken again.
+- **Voices:** for Spanish, es-DO first, then es-US, es-419, es-MX, es-ES, or any other Spanish voice; for English, en-US first, then any English voice. The voice used is shown while speaking.
+- **Controls:**
+  - **Auto speak** on/off (off means interpret manually and play with Replay);
+  - **Mute**, which silences automatic speech and stops current audio;
+  - **Replay**, which repeats the last result in the selected language;
+  - **Clear**;
+  - **Last spoken**, which shows the expression, language, source, and time.
+- **Stopping and errors:** stopping the camera or pressing Clear cancels speech, any pending Go/Meta request, and the cooldown. Browser audio errors (for example, autoplay blocked) are shown in the panel; click Replay to retry.
+- **Generic gesture mode** keeps its explicit "Interpret" button and never triggers LSRD phrases.
 
 ### Training workflow
 
@@ -420,7 +447,7 @@ The intent catalog: texts, LSRD status, references, and notes. `/training` and t
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/intents/interpret -H "Content-Type: application/json" \
-  -d '{"recognition_type":"custom_sign","intent":"NEED_HELP","confidence":0.93,"language":"es","raw_labels":["NEED_HELP"],"source":"camera","model_id":"knn-v1-202611040153"}'
+  -d '{"recognition_type":"custom_sign_sequence","intent":"NEED_HELP","confidence":0.93,"language":"es","raw_labels":["NEED_HELP"],"source":"camera","model_id":"knn-v1-202611040153"}'
 ```
 
 ```json
@@ -428,13 +455,14 @@ curl -X POST http://localhost:8080/api/v1/intents/interpret -H "Content-Type: ap
   "intent": "NEED_HELP", "raw_labels": ["NEED_HELP"], "confidence": 0.93, "language": "es",
   "text_es": "Necesito ayuda", "text_en": "I need help", "uncertain": false,
   "source": "meta", "model": "muse-spark-1.3", "provider": "meta", "latency_ms": 2644,
-  "verification": { "status": "word_references", "references": [{ "gloss": "NECESITAR", "url": "…" }] },
+  "verification": { "status": "word_references", "sequence_verified": false, "references": [{ "gloss": "NECESITAR", "url": "…" }] },
+  "experimental": true,
   "prediction_note": "Prediction from an experimental classifier trained on a small set of recordings. Not a verified sign-language translation."
 }
 ```
 
 - **Validation:**
-  - `recognition_type` must be `custom_sign`.
+  - `recognition_type` must be `custom_sign_sequence` (the phrase-level classifier). The Phase 4 value `custom_sign` is still accepted.
   - `intent` must be in the catalog. `UNKNOWN` returns **422 `unknown_intent`**, and `WHERE_BATHROOM` returns **422 `intent_unavailable`**.
   - `confidence` must be in [0, 1], and `language` must be `es` or `en`.
   - `raw_labels` must have 1–8 entries and include the intent. Unknown fields are rejected.
@@ -564,6 +592,22 @@ The same checks work with `curl`; see [API](#api).
 
 ## Verification status
 
+### Phase 5 (complete expressions + automatic speech): what was actually tested
+
+- **Automated:**
+  - Go: `go test ./...` covers `custom_sign_sequence` and the legacy `custom_sign`, experimental vs. verified intents, registry invariants (only dictionary-documented expressions can be `sequence_verified`), and the shared contract fixture.
+  - Frontend: 53 unit tests cover the state machine transitions (no recognition outside RECOGNIZING, no second interpretation or overlapping speech, reset), voice selection (es-DO → other Spanish; en-US), and the median-length window with its mixed-length warning.
+- **Mechanical end-to-end run in real Chrome, production build:** this tests the software path, **not LSRD recognition**.
+  - Setup: real MediaPipe landmarks from Google sample photos, recorded under **stand-in labels**, then trained and activated.
+  - With **Auto speak on**, with no click, the state went Recognizing → Interpreting → Speaking.
+  - Go `custom_sign_sequence` → Muse Spark returned "Hola / Hello" (4.6 s). **Last spoken: "Hola" (HELLO, Español, Muse Spark)**, with no speech error.
+  - While the same sign stayed in view, **exactly 1** interpretation request was sent.
+  - After switching to English, **Replay** set Last spoken to **"Hello"**.
+  - The SpeechSynthesis calls completed without errors, but audio can't be heard in a headless browser. **Listen on a real machine** to confirm the voice.
+  - The stand-in data was deleted.
+- **Docker:** `docker compose build` succeeded for both images.
+- **Real LSRD evaluation results: none yet.** These require your own recordings on `/training`.
+
 ### Phase 4 (custom signs): what was actually tested
 
 - **Automated:**
@@ -667,12 +711,16 @@ Backend tests cover input validation, label normalization, confidence thresholds
 1. Run `docker compose up --build` (or `npm run dev`) and open http://localhost:3000. The header should say **Backend online**.
 2. Choose **Custom signs (LSRD)**. The panel should say **Custom model loaded**.
 3. Click **Start camera**. The skeleton overlay appears.
-4. Perform **HELLO** (or another trained intent), then lower your hands.
-5. Watch the **live prediction**, then the **Recognized intent** card: `HELLO`, confidence, "LSRD sign verified", and the dictionary link.
-6. Click **Interpret recognized intent**. Go sends only the intent and confidence to Muse Spark.
-7. "Hola / Hello" appears with the **Muse Spark · muse-spark-1.3** badge. A fallback would be labeled.
-8. Click **Speak**.
-9. Show the honesty points: perform a random movement (UNKNOWN, nothing recognized); point out the limitations notice; switch to **Generic gestures** to show that 👍 is described as a gesture, not a sign.
+4. Check that **Auto speak on** and **Sound on** are set, and choose **Español** or **English**.
+5. Perform **HELLO** (or another trained expression), then lower your hands.
+6. Watch the state bar go **Recognizing → Confirmed → Interpreting → Speaking**. The **Recognized intent** card shows `HELLO`, the confidence, "LSRD sign verified", and the dictionary link.
+7. You hear **"Hola"** (or **"Hello"**). The text appears with the **Muse Spark · muse-spark-1.3** badge, and **Last spoken** updates. A fallback would be labeled.
+8. Switch the language and press **Replay** to hear the other language.
+9. Show the honesty points:
+   - perform a random movement: UNKNOWN, nothing is spoken;
+   - hold a sign: it is spoken only once;
+   - point out the "Experimental intent" badge on NEED_HELP and NEED_DOCTOR, and the limitations notice;
+   - switch to **Generic gestures** to show that 👍 is described as a gesture, not a sign.
 
 ## Accessibility
 
