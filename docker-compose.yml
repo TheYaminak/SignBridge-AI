@@ -33,6 +33,7 @@ services:
         # The browser calls the API directly, so this is a host URL, not http://backend:8080.
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
         NEXT_PUBLIC_ENABLE_DEV_TOOLS: ${NEXT_PUBLIC_ENABLE_DEV_TOOLS:-true}
+        NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE: ${NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE:-0.8}
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:3000"

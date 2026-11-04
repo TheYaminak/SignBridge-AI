@@ -93,6 +93,64 @@ func TestInterpretSuccess(t *testing.T) {
 	}
 }
 
+func TestInterpretGestures(t *testing.T) {
+	client := okClient(`{"interpretation":"La persona muestra un pulgar hacia arriba.","confidence":0.9,"needs_clarification":false,"clarification_note":""}`)
+	req := domain.InterpretationRequest{
+		Signs:           domain.SignSequence{sign("Thumb_Up", 0.92), sign("Open_Palm", 0.88)},
+		Language:        "es",
+		Source:          domain.SourceCamera,
+		RecognitionType: domain.RecognitionGesture,
+	}
+	got, err := NewMetaInterpreter(client, 0.6).Interpret(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Interpret: %v", err)
+	}
+	if got.RecognitionType != domain.RecognitionGesture || got.Source != domain.SourceCamera {
+		t.Errorf("metadata = %+v", got)
+	}
+	if got.RecognizedSigns[0].Label != "THUMB_UP" || got.RecognizedSigns[1].Label != "OPEN_PALM" {
+		t.Errorf("labels = %+v", got.RecognizedSigns)
+	}
+
+	system := client.lastReq.Messages[0].Content
+	if !strings.Contains(system, "NOT sign-language words") || !strings.Contains(system, "Never translate a gesture") {
+		t.Error("gesture prompt must forbid sign-language translation")
+	}
+	user := client.lastReq.Messages[1].Content
+	if !strings.Contains(user, "not sign language") || !strings.Contains(user, `"hand_shape":"thumbs-up"`) {
+		t.Errorf("user prompt = %s", user)
+	}
+}
+
+func TestInterpretRejectsUnknownGesture(t *testing.T) {
+	client := okClient(validOutput)
+	req := domain.InterpretationRequest{
+		Signs:           domain.SignSequence{sign("HELP", 0.9)},
+		Language:        "es",
+		RecognitionType: domain.RecognitionGesture,
+	}
+	if _, err := NewMetaInterpreter(client, 0.6).Interpret(context.Background(), req); !errors.Is(err, domain.ErrInvalidRequest) {
+		t.Fatalf("expected ErrInvalidRequest, got %v", err)
+	}
+	if client.calls != 0 {
+		t.Error("model must not be called")
+	}
+}
+
+func TestInterpretDefaultsToSignType(t *testing.T) {
+	client := okClient(validOutput)
+	got, err := NewMetaInterpreter(client, 0.6).Interpret(context.Background(), request(sign("HELP", 0.9)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RecognitionType != domain.RecognitionSign {
+		t.Errorf("RecognitionType = %q", got.RecognitionType)
+	}
+	if strings.Contains(client.lastReq.Messages[0].Content, "GENERIC HAND GESTURES") {
+		t.Error("sign requests must use the sign prompt")
+	}
+}
+
 func TestInterpretEnglishPrompt(t *testing.T) {
 	client := okClient(validOutput)
 	req := request(sign("HELP", 0.9))

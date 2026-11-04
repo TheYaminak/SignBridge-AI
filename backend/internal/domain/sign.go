@@ -39,6 +39,30 @@ const (
 	SourceManual SignSource = "manual"
 )
 
+// RecognitionType says what kind of labels a sequence contains.
+type RecognitionType string
+
+const (
+	// RecognitionSign means labels are sign-language glosses (custom
+	// classifier or manual test input).
+	RecognitionSign RecognitionType = "sign"
+	// RecognitionGesture means labels are generic hand gestures detected by
+	// MediaPipe's Gesture Recognizer. They are not sign-language words.
+	RecognitionGesture RecognitionType = "gesture"
+)
+
+// SupportedGestures maps normalized MediaPipe canned gesture labels to a
+// neutral description of the hand shape.
+var SupportedGestures = map[string]string{
+	"OPEN_PALM":   "open palm",
+	"CLOSED_FIST": "closed fist",
+	"THUMB_UP":    "thumbs-up",
+	"THUMB_DOWN":  "thumbs-down",
+	"VICTORY":     "victory / V sign (index and middle fingers raised)",
+	"POINTING_UP": "index finger pointing up",
+	"ILOVEYOU":    "hand with thumb, index and pinky extended (the \"I love you\" hand shape)",
+}
+
 // SupportedLanguages maps accepted output language codes to their names.
 var SupportedLanguages = map[string]string{
 	"es": "Spanish",
@@ -51,6 +75,8 @@ type InterpretationRequest struct {
 	// Language is the output language code: "es" or "en".
 	Language string     `json:"language"`
 	Source   SignSource `json:"source,omitempty"`
+	// RecognitionType defaults to "sign".
+	RecognitionType RecognitionType `json:"recognition_type,omitempty"`
 }
 
 // DiscardedSign is an input sign that was not sent for interpretation.
@@ -82,7 +108,8 @@ type Interpretation struct {
 
 // InterpretationResult is the full response of POST /api/v1/interpret.
 type InterpretationResult struct {
-	Source SignSource `json:"source,omitempty"`
+	Source          SignSource      `json:"source,omitempty"`
+	RecognitionType RecognitionType `json:"recognition_type"`
 	// RecognizedSigns are the normalized input signs that met the confidence
 	// threshold and were sent to the model, in order.
 	RecognizedSigns SignSequence    `json:"recognized_signs"`
@@ -151,11 +178,30 @@ func (r InterpretationRequest) Normalize() (InterpretationRequest, error) {
 		return r, fmt.Errorf("%w: source must be \"camera\" or \"manual\"", ErrInvalidRequest)
 	}
 
-	out := InterpretationRequest{Language: lang, Source: r.Source, Signs: make(SignSequence, len(r.Signs))}
+	kind := r.RecognitionType
+	switch kind {
+	case "":
+		kind = RecognitionSign
+	case RecognitionSign, RecognitionGesture:
+	default:
+		return r, fmt.Errorf("%w: recognition_type must be \"sign\" or \"gesture\"", ErrInvalidRequest)
+	}
+
+	out := InterpretationRequest{
+		Language:        lang,
+		Source:          r.Source,
+		RecognitionType: kind,
+		Signs:           make(SignSequence, len(r.Signs)),
+	}
 	for i, s := range r.Signs {
 		label, err := NormalizeLabel(s.Label)
 		if err != nil {
 			return r, fmt.Errorf("%w: signs[%d]: %v", ErrInvalidRequest, i, err)
+		}
+		if kind == RecognitionGesture {
+			if _, ok := SupportedGestures[label]; !ok {
+				return r, fmt.Errorf("%w: signs[%d]: %q is not a supported gesture", ErrInvalidRequest, i, s.Label)
+			}
 		}
 		if !s.Confidence.Valid() {
 			return r, fmt.Errorf("%w: signs[%d].confidence must be between 0 and 1", ErrInvalidRequest, i)

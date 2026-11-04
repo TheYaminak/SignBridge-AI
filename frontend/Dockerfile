@@ -14,9 +14,14 @@ ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_ENABLE_DEV_TOOLS=false
 ENV NEXT_PUBLIC_ENABLE_DEV_TOOLS=$NEXT_PUBLIC_ENABLE_DEV_TOOLS
+ARG NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE=0.8
+ENV NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE=$NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# prebuild copies the MediaPipe WASM runtime from node_modules into public/;
+# the gesture model ships in public/models. Both end up in the image below.
+RUN npm run build && test -f public/mediapipe/wasm/vision_wasm_internal.wasm \
+  && test -f public/models/gesture_recognizer.task
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
