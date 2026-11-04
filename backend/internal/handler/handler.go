@@ -25,12 +25,13 @@ type MetaStatus interface {
 
 // Options configures the router.
 type Options struct {
-	Logger         *slog.Logger
-	Interpreter    service.Interpreter
-	Meta           MetaStatus
-	Tester         service.ConnectionTester
-	AllowedOrigins []string
-	RequestTimeout time.Duration
+	Logger            *slog.Logger
+	Interpreter       service.Interpreter
+	IntentInterpreter service.IntentInterpreter
+	Meta              MetaStatus
+	Tester            service.ConnectionTester
+	AllowedOrigins    []string
+	RequestTimeout    time.Duration
 	// EnableDevEndpoints registers development-only routes such as
 	// POST /api/v1/meta/test. Must be false in production.
 	EnableDevEndpoints bool
@@ -62,6 +63,7 @@ func NewRouter(opts Options) http.Handler {
 
 	h := &handlers{
 		interpreter: opts.Interpreter,
+		intents:     opts.IntentInterpreter,
 		meta:        opts.Meta,
 		tester:      opts.Tester,
 		logger:      logger,
@@ -70,6 +72,8 @@ func NewRouter(opts Options) http.Handler {
 	r.Get("/health", h.health)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/interpret", h.interpret)
+		r.Get("/intents", h.listIntents)
+		r.Post("/intents/interpret", h.interpretIntent)
 		r.Get("/meta/status", h.metaStatus)
 		if opts.EnableDevEndpoints {
 			r.Post("/meta/test", h.metaTest)
@@ -88,19 +92,53 @@ func NewRouter(opts Options) http.Handler {
 
 type handlers struct {
 	interpreter service.Interpreter
+	intents     service.IntentInterpreter
 	meta        MetaStatus
 	tester      service.ConnectionTester
 	logger      *slog.Logger
 }
 
+// APIVersion increases whenever the request contract changes. The frontend
+// checks it via /health and warns when it talks to an outdated backend
+// (e.g. a `go run` process started before a pull).
+//
+//	2: recognition_type on /interpret (Phase 3)
+//	3: /intents and /intents/interpret (Phase 4)
+const APIVersion = 3
+
 // HealthResponse is returned by GET /health.
 type HealthResponse struct {
-	Status  string `json:"status"`
-	Service string `json:"service"`
+	Status     string `json:"status"`
+	Service    string `json:"service"`
+	APIVersion int    `json:"api_version"`
 }
 
 func (h *handlers) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Service: ServiceName})
+	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Service: ServiceName, APIVersion: APIVersion})
+}
+
+// IntentsResponse is returned by GET /api/v1/intents.
+type IntentsResponse struct {
+	Intents []domain.Intent `json:"intents"`
+	Unknown string          `json:"unknown"`
+}
+
+func (h *handlers) listIntents(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, IntentsResponse{Intents: domain.IntentCatalog, Unknown: domain.UnknownIntent})
+}
+
+func (h *handlers) interpretIntent(w http.ResponseWriter, r *http.Request) {
+	var req domain.IntentRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	result, err := h.intents.InterpretIntent(r.Context(), req)
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // MetaStatusResponse is returned by GET /api/v1/meta/status. It reflects

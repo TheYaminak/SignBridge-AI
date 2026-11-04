@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // MediaPipe WASM glue copied from node_modules (scripts/copy-mediapipe-wasm.mjs).
+    "public/mediapipe/**",
   ]),
 ]);
 

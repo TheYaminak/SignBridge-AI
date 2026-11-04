@@ -22,6 +22,13 @@ func (h *handlers) writeServiceError(w http.ResponseWriter, r *http.Request, err
 	case errors.Is(err, domain.ErrInvalidRequest):
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
+	case errors.Is(err, domain.ErrUnknownIntent):
+		writeError(w, http.StatusUnprocessableEntity, "unknown_intent",
+			"UNKNOWN predictions are never turned into a translation.")
+		return
+	case errors.Is(err, domain.ErrIntentUnavailable):
+		writeError(w, http.StatusUnprocessableEntity, "intent_unavailable", err.Error())
+		return
 	case errors.Is(err, service.ErrNoConfidentSigns):
 		writeError(w, http.StatusUnprocessableEntity, "no_confident_signs", err.Error())
 		return

@@ -6,7 +6,7 @@ import { MediaPipeGestureClassifier } from "@/lib/vision/classifier";
 import { clearCanvas, drawHands } from "@/lib/vision/draw";
 import { createHandTracker, type Delegate, type HandTracker } from "@/lib/vision/hand-tracker";
 import { GestureStabilizer } from "@/lib/vision/stabilizer";
-import type { FrameClassifier, RecognitionKind } from "@/lib/vision/types";
+import type { FrameClassifier, FrameObservation, RecognitionKind } from "@/lib/vision/types";
 
 export type VisionStatus = "off" | "loading" | "running" | "error";
 
@@ -34,7 +34,13 @@ interface Options {
   enabled: boolean;
   showSkeleton: boolean;
   minConfidence: number;
-  onRecognition: (event: RecognitionEvent) => void;
+  onRecognition?: (event: RecognitionEvent) => void;
+  /**
+   * Called for every processed frame with the raw landmarks and the
+   * monotonic timestamp (performance.now()). Used by training and the custom
+   * sign recognizer; keep it cheap.
+   */
+  onFrame?: (frame: FrameObservation, timestampMs: number) => void;
 }
 
 const EMPTY_SNAPSHOT: VisionSnapshot = { handCount: 0, gesture: null, candidate: null, fps: 0 };
@@ -62,12 +68,17 @@ export function useHandTracking({
   showSkeleton,
   minConfidence,
   onRecognition,
+  onFrame,
 }: Options) {
   const [phase, setPhase] = useState<Phase>(LOADING);
   const [snapshot, setSnapshot] = useState<VisionSnapshot>(EMPTY_SNAPSHOT);
 
   const showSkeletonRef = useRef(showSkeleton);
   const onRecognitionRef = useRef(onRecognition);
+  const onFrameRef = useRef(onFrame);
+  useEffect(() => {
+    onFrameRef.current = onFrame;
+  }, [onFrame]);
   useEffect(() => {
     showSkeletonRef.current = showSkeleton;
     if (!showSkeleton) clearCanvas(canvasRef.current);
@@ -144,6 +155,8 @@ export function useHandTracking({
         if (showSkeletonRef.current) drawHands(ctx, frame, tracker.connections);
       }
 
+      onFrameRef.current?.(frame, now);
+
       const classification = classifier.classify(frame);
       const { event, candidate } = stabilizer.push({
         timestampMs: now,
@@ -151,7 +164,7 @@ export function useHandTracking({
         classification,
       });
       if (event) {
-        onRecognitionRef.current({
+        onRecognitionRef.current?.({
           label: event.label,
           confidence: event.confidence,
           kind: event.kind,

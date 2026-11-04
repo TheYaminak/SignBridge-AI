@@ -11,6 +11,7 @@ const LABELS = {
   checking: "Checking backend…",
   online: "Backend online",
   offline: "Backend offline",
+  outdated: "Backend outdated: restart it",
 } as const;
 
 export function BackendStatus() {
@@ -36,7 +37,7 @@ export function BackendStatus() {
         />
         <span>{LABELS[status]}</span>
       </div>
-      {status === "offline" && (
+      {(status === "offline" || status === "outdated") && (
         <Button
           variant="ghost"
           size="icon-sm"

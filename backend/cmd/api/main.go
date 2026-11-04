@@ -57,6 +57,7 @@ func run() error {
 	router := handler.NewRouter(handler.Options{
 		Logger:             logger,
 		Interpreter:        service.NewMetaInterpreter(metaClient, cfg.MinSignConfidence),
+		IntentInterpreter:  service.NewMetaIntentInterpreter(metaClient, cfg.IntentMinConfidence, logger),
 		Meta:               metaClient,
 		Tester:             service.NewMetaConnectionTester(metaClient),
 		AllowedOrigins:     cfg.CORSAllowedOrigins,

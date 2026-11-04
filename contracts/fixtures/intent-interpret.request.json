@@ -1,0 +1,9 @@
+{
+  "recognition_type": "custom_sign",
+  "intent": "NEED_HELP",
+  "confidence": 0.93,
+  "language": "es",
+  "raw_labels": ["NEED_HELP"],
+  "source": "camera",
+  "model_id": "knn-v1-20261104"
+}
