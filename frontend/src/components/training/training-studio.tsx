@@ -28,7 +28,8 @@ import { trainAndEvaluate, type TrainingReport } from "@/lib/signs/evaluate";
 import { DEFAULT_FEATURE_CONFIG, handPresenceRatio } from "@/lib/signs/features";
 import { toLandmarkFrame } from "@/lib/signs/landmarks";
 import { clearSamples, deleteSample, downloadJson, listSamples, putSamples, saveActiveModel } from "@/lib/signs/storage";
-import { TRAINABLE_LABELS, UNKNOWN_LABEL, type LandmarkFrame, type Sample } from "@/lib/signs/types";
+import { UNKNOWN_LABEL, type LandmarkFrame, type Sample } from "@/lib/signs/types";
+import { trainingLabels } from "@/lib/signs/vocabulary";
 import type { FrameObservation } from "@/lib/vision/types";
 import type { IntentInfo } from "@/types/api";
 import { cn } from "@/lib/utils";
@@ -45,10 +46,18 @@ type RecState =
 
 const UNKNOWN_INFO: IntentInfo = {
   id: UNKNOWN_LABEL,
+  kind: "phrase_intent",
   text_es: "Ninguna / desconocido",
   text_en: "None / unknown",
   status: "verified_sign",
+  supported: true,
+  training_target: true,
+  training_status: "not_trained",
+  recognizer: "",
   sign_count: 0,
+  components: [],
+  requires_motion: "unknown",
+  requires_non_manual: "unknown",
   references: [],
   note: "Rejection class: resting hands, transitions, ordinary movement, generic gestures, and no hands in view.",
 };
@@ -95,7 +104,8 @@ export function TrainingStudio() {
   const { intents, error: intentsError } = useIntents();
 
   const [samples, setSamples] = useState<Sample[]>([]);
-  const [selected, setSelected] = useState<string>("HELLO");
+  // Empty until the user picks; defaults to the first registry training target.
+  const [picked, setPicked] = useState<string | null>(null);
   const [signerId, setSignerId] = useState("signer-1");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [rec, setRec] = useState<RecState>({ phase: "idle" });
@@ -136,12 +146,14 @@ export function TrainingStudio() {
     [],
   );
 
-  const catalog: IntentInfo[] = [
-    ...(intents ?? TRAINABLE_LABELS.filter((l) => l !== UNKNOWN_LABEL).map((id) => ({ ...UNKNOWN_INFO, id, text_es: id, text_en: id, note: "", status: "word_references" as const }))),
-    UNKNOWN_INFO,
-  ];
+  // Everything below is driven by the vocabulary registry from the Go API.
+  // Without it, nothing can be labeled, so recording is disabled.
+  const catalog: IntentInfo[] = intents ? [...intents, UNKNOWN_INFO] : [];
+  const allowedLabels = intents ? trainingLabels(intents) : [];
+  const selected = picked ?? allowedLabels[0] ?? UNKNOWN_LABEL;
+  const setSelected = setPicked;
   const info = catalog.find((i) => i.id === selected) ?? UNKNOWN_INFO;
-  const trainable = info.status !== "unavailable" && (TRAINABLE_LABELS as readonly string[]).includes(info.id);
+  const trainable = allowedLabels.includes(info.id);
   const counts = countByLabel(samples);
   const ready = camera.status === "active" && vision.status === "running";
   const busy = rec.phase === "countdown" || rec.phase === "recording";
@@ -214,7 +226,7 @@ export function TrainingStudio() {
 
   const importData = async (file: File) => {
     try {
-      const v = validateDataset(JSON.parse(await file.text()));
+      const v = validateDataset(JSON.parse(await file.text()), allowedLabels.length ? allowedLabels : null);
       const known = new Set(samples.map((s) => s.sample_id));
       const fresh = v.samples.filter((s) => !known.has(s.sample_id));
       await putSamples(fresh);
@@ -239,7 +251,7 @@ export function TrainingStudio() {
     // Yield so the spinner renders before the synchronous training run.
     setTimeout(() => {
       try {
-        setReport(trainAndEvaluate(samples.filter((s) => (TRAINABLE_LABELS as readonly string[]).includes(s.label))));
+        setReport(trainAndEvaluate(samples.filter((s) => allowedLabels.includes(s.label))));
       } catch (err) {
         setNotice({ kind: "error", text: err instanceof Error ? err.message : "Training failed." });
       } finally {
@@ -279,8 +291,8 @@ export function TrainingStudio() {
             {intentsError && (
               <Alert variant="destructive">
                 <AlertTriangle aria-hidden="true" />
-                <AlertTitle>Intent catalog unavailable</AlertTitle>
-                <AlertDescription>{intentsError} Start the Go backend to see dictionary references.</AlertDescription>
+                <AlertTitle>Vocabulary registry unavailable</AlertTitle>
+                <AlertDescription>{intentsError} Start the Go backend: labels, references, and training targets come from its vocabulary registry, so recording and training are disabled until it loads.</AlertDescription>
               </Alert>
             )}
             <div role="radiogroup" aria-label="Intent to record" className="flex flex-wrap gap-2">
@@ -469,7 +481,7 @@ export function TrainingStudio() {
             <CardDescription>k-nearest-neighbor classifier over normalized landmark sequences. Runs locally.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <Button onClick={train} disabled={training || samples.length < 4} className="self-start">
+            <Button onClick={train} disabled={training || samples.length < 4 || allowedLabels.length === 0} className="self-start">
               {training ? <Loader2 className="animate-spin" aria-hidden="true" /> : <BrainCircuit aria-hidden="true" />}
               {training ? "Training…" : "Train and evaluate"}
             </Button>

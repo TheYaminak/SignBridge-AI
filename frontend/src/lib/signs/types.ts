@@ -10,13 +10,8 @@ export const DATASET_VERSION = 1;
 /** Rejection class: rest, transitions, unrelated movement. */
 export const UNKNOWN_LABEL = "UNKNOWN";
 
-/**
- * Intent IDs the classifier may learn. Texts and dictionary references live
- * in the Go catalog (GET /api/v1/intents); keep IDs in sync with it.
- */
-export const TRAINABLE_LABELS = ["HELLO", "NEED_HELP", "THANK_YOU", "NEED_DOCTOR", UNKNOWN_LABEL] as const;
-/** In the catalog, but not trainable (no dictionary reference found). */
-export const UNAVAILABLE_LABELS = ["WHERE_BATHROOM"] as const;
+/** Format of a registry ID / sample label. Which labels are trainable comes from the registry. */
+export const LABEL_PATTERN = /^[A-Z][A-Z0-9_]{0,31}$/;
 
 /** 21 landmarks × (x, y, z), MediaPipe normalized image coordinates of the unmirrored frame. */
 export type HandLandmarks = number[];

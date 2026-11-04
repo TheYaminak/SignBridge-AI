@@ -73,7 +73,7 @@ signbridge-ai/
 │   ├── cmd/api/main.go          entry point: config, wiring, graceful shutdown, healthcheck
 │   └── internal/
 │       ├── config/              env and .env loading
-│       ├── domain/              sign types, validation, label normalization, thresholds
+│       ├── domain/              vocabulary.json registry (embedded), sign types, validation
 │       ├── handler/             chi routes, CORS, logging, error mapping
 │       ├── meta/                Meta Model API Chat Completions client (net/http)
 │       └── service/             interpreter, prompt, output contract, connection tester
@@ -337,13 +337,60 @@ npm run train -- ../signbridge-dataset-2026-11-04.json --out public/models/sign-
 Offline training in Docker (one-off container, no permanent service, Node only):
 
 ```bash
-# from the repo root; put your export in frontend/data/ first (git-ignored)
-docker run --rm -v "$PWD/frontend:/app" -v signbridge-train-modules:/app/node_modules -w /app node:22-alpine \
+# from the repo root; put your export in frontend/data/ first (git-ignored).
+# The repo root is mounted so the trainer can read backend/internal/domain/vocabulary.json.
+docker run --rm -v "$PWD:/repo" -v signbridge-train-modules:/repo/frontend/node_modules -w /repo/frontend node:22-alpine \
   sh -c "npm ci --no-audit --no-fund && npm run train -- data/signbridge-dataset.json --out public/models/sign-classifier.json"
 docker compose up --build -d frontend   # bundle the new model
 ```
 
 A trained model stores standardized landmark vectors from your recordings. Commit `public/models/sign-classifier.json` only if you're comfortable publishing that data.
+
+## Extending the vocabulary (after the hackathon)
+
+The MVP's five intents are data, not code. One declarative registry drives the whole app: [`backend/internal/domain/vocabulary.json`](backend/internal/domain/vocabulary.json). It is embedded in the Go binary, validated at startup, and served at `GET /api/v1/intents`.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique label, `^[A-Z][A-Z0-9_]{0,31}$`. `UNKNOWN` is reserved. |
+| `kind` | `phrase_intent` (a complete expression, used by all current entries) or `sign` (reserved for single signs) |
+| `text_es`, `text_en` | Display labels and the canonical phrase given to Muse Spark |
+| `status`, `references` | LSRD verification (`verified_sign`, `word_references`, `unavailable`) and dictionary URLs |
+| `supported` | Only supported entries can be recognized or interpreted. Requires at least one reference. |
+| `training_target` | Shown as recordable on `/training`. Requires `supported` and a `recognizer`. |
+| `training_status` | Bundled state: `not_trained`, `trained`, `validated`, or `not_trainable`. All entries are `not_trained` today. |
+| `recognizer` | Classifier family expected to predict it (`knn-sequence-v1`) |
+| `components`, `sign_count` | Dictionary glosses a phrase intent is made of |
+| `requires_motion`, `requires_non_manual` | `yes`, `no`, or `unknown`. Unverified properties stay `unknown`; the dictionary is video-only. |
+
+What reads the registry, and what doesn't:
+
+- **Frontend:** `/training` takes its recordable labels from it, as does the CLI trainer (`--vocabulary`) and dataset import validation.
+- **Recognition filter:** the live recognizer only accepts labels that are `supported` in the registry. The panel lists any model labels it ignores, and nothing is recognized while the registry is unavailable.
+- **Backend:** validates `/intents/interpret` against it. Go knows nothing about the classifier; it receives an intent ID, a confidence, and an opaque `model_id`.
+- **Independent of the registry:** models declare their own `labels`, `target` (`phrase_intent`), and `recognizer`. Model loading (`useSignModel`) is separate from the translation UI, and the camera, MediaPipe, and Meta code never change when the vocabulary does.
+
+**To add an expression later:**
+
+1. Verify it in the LSRD dictionary by hand. Don't scrape, and don't add entries without a reference.
+2. Add a registry entry with `supported: true`, `training_target: true`, references, and `unknown` for anything not verified.
+3. Record samples on `/training`, train, and **check the held-out report**.
+4. Only after validation, bundle the model and set `training_status` to `trained` or `validated`.
+
+**To add a different model type,** for example a sign-level classifier or one that uses Pose or Face landmarks:
+
+1. Implement the `FrameClassifier`/`predict` interface in `lib/signs` or `lib/vision`.
+2. Emit labels that exist in the registry.
+3. Give the model a new `recognizer` ID and point the relevant entries at it.
+
+**Future work (deliberately not built now):**
+
+- Single-sign entries (`kind: "sign"`) and a composer that maps recognized sign sequences to phrase intents.
+- Pose and Face landmarks for non-manual markers.
+- Multiple models loaded per recognizer.
+- A large-vocabulary training pipeline.
+
+None of these is needed for the five-intent MVP.
 
 ## API
 

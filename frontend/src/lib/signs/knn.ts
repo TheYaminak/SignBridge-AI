@@ -12,6 +12,11 @@ export interface SignModel {
   version: 1;
   model_id: string;
   created_at: string;
+  /** What the labels are: complete phrase intents (today) or single signs (future). */
+  target?: "phrase_intent" | "sign";
+  /** Classifier family; matches the registry's "recognizer" field. */
+  recognizer?: string;
+  /** Labels this model can output, including UNKNOWN. Read dynamically by the UI. */
   labels: string[];
   feature: FeatureConfig;
   k: number;
@@ -45,6 +50,9 @@ export interface TrainOptions {
   feature?: FeatureConfig;
   now?: Date;
 }
+
+/** Registry "recognizer" value for models produced by this module. */
+export const RECOGNIZER_ID = "knn-sequence-v1";
 
 const round = (x: number) => Math.round(x * 1e4) / 1e4;
 
@@ -121,6 +129,8 @@ export function trainModel(samples: Sample[], opts: TrainOptions = {}): SignMode
     version: 1,
     model_id: `knn-v1-${now.toISOString().replace(/[-:T]/g, "").slice(0, 12)}`,
     created_at: now.toISOString(),
+    target: "phrase_intent",
+    recognizer: RECOGNIZER_ID,
     labels: Object.keys(counts).sort(),
     feature,
     k: Math.min(opts.k ?? 5, rows.length),

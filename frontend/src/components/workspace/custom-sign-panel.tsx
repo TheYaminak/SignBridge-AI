@@ -29,6 +29,7 @@ import { formatPercent } from "@/lib/format";
 import { OUTPUT_LANGUAGES, type OutputLanguage } from "@/lib/languages";
 import type { Prediction } from "@/lib/signs/knn";
 import { UNKNOWN_LABEL } from "@/lib/signs/types";
+import { modelCoverage } from "@/lib/signs/vocabulary";
 import type { IntentInfo, IntentResult, VerificationStatus } from "@/types/api";
 
 export interface RecognizedIntent {
@@ -90,6 +91,7 @@ export function CustomSignPanel({
   speech,
 }: CustomSignPanelProps) {
   const info = recognized ? intents?.find((i) => i.id === recognized.intent) : undefined;
+  const coverage = model.model ? modelCoverage(model.model.labels, intents) : null;
   const livePct = live ? Math.round(live.confidence * 100) : null;
   const text = result ? (language === "es" ? result.text_es : result.text_en) : null;
   const otherText = result ? (language === "es" ? result.text_en : result.text_es) : null;
@@ -135,8 +137,15 @@ export function CustomSignPanel({
                 </p>
                 <p className="text-muted-foreground">
                   {model.source === "browser" ? "Trained in this browser" : "Bundled with the app"} · {model.model.training.samples} samples ·{" "}
-                  {model.model.labels.join(", ")}
+                  {coverage?.active.length ? coverage.active.join(", ") : "no supported labels"}
                 </p>
+                {coverage && coverage.ignored.length > 0 && (
+                  <p className="text-xs text-warning">Ignored (not supported in the vocabulary registry): {coverage.ignored.join(", ")}</p>
+                )}
+                {coverage && !coverage.hasUnknown && (
+                  <p className="text-xs text-warning">This model has no UNKNOWN class, so it can only reject by distance.</p>
+                )}
+                {!intents && <p className="text-xs text-warning">Vocabulary registry unavailable: recognitions are paused.</p>}
               </>
             ) : model.status === "loading" ? (
               <p className="font-medium">Loading custom model…</p>

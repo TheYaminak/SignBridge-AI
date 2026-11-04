@@ -13,6 +13,17 @@ import { isSignModel, predict, trainModel } from "./knn";
 import { toLandmarkFrame } from "./landmarks";
 import { RealtimeSignRecognizer } from "./realtime";
 import type { LandmarkFrame, Sample } from "./types";
+import { isInterpretable, modelCoverage, trainingLabels } from "./vocabulary";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { IntentInfo } from "../../types/api";
+
+// The real registry served by the Go API.
+const registry: IntentInfo[] = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "backend", "internal", "domain", "vocabulary.json"), "utf8"),
+).entries;
+const ALLOWED = trainingLabels(registry);
 
 /** A fake hand: 21 points around (cx, cy) with a given finger spread. */
 function hand(cx: number, cy: number, spread: number): number[] {
@@ -190,7 +201,7 @@ describe("evaluation", () => {
 describe("dataset validation", () => {
   it("round-trips export/import", () => {
     const samples = makeSet(2);
-    const v = validateDataset(JSON.parse(JSON.stringify(toDataset(samples))));
+    const v = validateDataset(JSON.parse(JSON.stringify(toDataset(samples))), ALLOWED);
     assert.equal(v.errors.length, 0);
     assert.equal(v.samples.length, samples.length);
   });
@@ -205,9 +216,10 @@ describe("dataset validation", () => {
       { ...good, sample_id: "time", frames: [...good.frames].reverse() },
       good,
     ]);
-    const v = validateDataset(data);
+    const v = validateDataset(data, ALLOWED);
     assert.equal(v.samples.length, 1);
     assert.equal(v.errors.length, 5);
+    assert.ok(v.errors.some((e) => e.includes("WHERE_BATHROOM is not a training target")));
   });
 
   it("rejects non-datasets", () => {
@@ -277,5 +289,40 @@ describe("toLandmarkFrame", () => {
 
     const empty = toLandmarkFrame({ timestampMs: 0, hands: [] }, 0);
     assert.deepEqual(empty, { timestamp_ms: 0, left_hand: null, right_hand: null });
+  });
+});
+
+describe("vocabulary registry", () => {
+  it("derives training targets from the registry, not hardcoded IDs", () => {
+    assert.deepEqual([...ALLOWED].sort(), ["HELLO", "NEED_DOCTOR", "NEED_HELP", "THANK_YOU", "UNKNOWN"]);
+    assert.ok(!ALLOWED.includes("WHERE_BATHROOM"));
+  });
+
+  it("only supported registry entries are interpretable", () => {
+    assert.equal(isInterpretable("HELLO", registry), true);
+    assert.equal(isInterpretable("WHERE_BATHROOM", registry), false);
+    assert.equal(isInterpretable("UNKNOWN", registry), false);
+    assert.equal(isInterpretable("SOME_FUTURE_SIGN", registry), false);
+    assert.equal(isInterpretable("HELLO", null), false, "no registry, no recognitions");
+  });
+
+  it("reports model labels the registry does not support", () => {
+    const c = modelCoverage(["HELLO", "UNKNOWN", "WAVE"], registry);
+    assert.deepEqual(c.active, ["HELLO"]);
+    assert.deepEqual(c.ignored, ["WAVE"]);
+    assert.equal(c.hasUnknown, true);
+  });
+
+  it("accepts any well-formed label when no registry list is given", () => {
+    const s = makeSample("HELLO", 0);
+    assert.equal(validateDataset(toDataset([{ ...s, label: "FUTURE_SIGN" }])).samples.length, 1);
+    assert.equal(validateDataset(toDataset([{ ...s, label: "bad label" }])).samples.length, 0);
+  });
+
+  it("trained models expose their labels and recognizer", () => {
+    const m = trainModel(makeSet(4));
+    assert.equal(m.target, "phrase_intent");
+    assert.equal(m.recognizer, "knn-sequence-v1");
+    assert.ok(registry.filter((e) => e.training_target).every((e) => e.recognizer === m.recognizer));
   });
 });

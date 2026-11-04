@@ -19,6 +19,7 @@ import { speechLangFor, type OutputLanguage } from "@/lib/languages";
 import type { Prediction } from "@/lib/signs/knn";
 import { toLandmarkFrame } from "@/lib/signs/landmarks";
 import { RealtimeSignRecognizer } from "@/lib/signs/realtime";
+import { isInterpretable } from "@/lib/signs/vocabulary";
 import type { FrameObservation } from "@/lib/vision/types";
 import type { IntentResult } from "@/types/api";
 import type { InterpretationResult, SignSequence } from "@/types/sign";
@@ -60,6 +61,10 @@ export function TranslationWorkspace() {
   const recognizerRef = useRef<RealtimeSignRecognizer | null>(null);
   const modeRef = useRef<Mode>(mode);
   const liveKeyRef = useRef("");
+  const intentsRef = useRef(intents);
+  useEffect(() => {
+    intentsRef.current = intents;
+  }, [intents]);
 
   const cameraActive = camera.status === "active";
   // Fresh recognizer whenever the model, mode, or camera session changes.
@@ -80,7 +85,9 @@ export function TranslationWorkspace() {
         setLive(step.prediction);
       }
     }
-    if (step.event) {
+    // Only registry-supported labels count; anything else the model can output
+    // (or anything while the registry is unavailable) is ignored.
+    if (step.event && isInterpretable(step.event.label, intentsRef.current)) {
       setRecognized({ intent: step.event.label, confidence: step.event.confidence, at: Date.now() });
       setIntentResult(null);
       setIntentError(null);

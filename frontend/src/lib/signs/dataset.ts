@@ -2,7 +2,7 @@ import {
   DATASET_FORMAT,
   DATASET_VERSION,
   LANDMARK_VALUES,
-  TRAINABLE_LABELS,
+  LABEL_PATTERN,
   UNKNOWN_LABEL,
   type Dataset,
   type LandmarkFrame,
@@ -23,11 +23,12 @@ function validHand(h: unknown): h is number[] | null {
   return h === null || (Array.isArray(h) && h.length === LANDMARK_VALUES && h.every((x) => typeof x === "number" && Number.isFinite(x)));
 }
 
-function sampleError(s: unknown, allowed: readonly string[]): string | null {
+function sampleError(s: unknown, allowed: readonly string[] | null): string | null {
   const x = s as Partial<Sample>;
   if (typeof x !== "object" || x === null) return "not an object";
   if (typeof x.sample_id !== "string" || !x.sample_id) return "missing sample_id";
-  if (typeof x.label !== "string" || !allowed.includes(x.label)) return `unsupported label ${JSON.stringify(x.label)}`;
+  if (typeof x.label !== "string" || !LABEL_PATTERN.test(x.label)) return `invalid label ${JSON.stringify(x.label)}`;
+  if (allowed && !allowed.includes(x.label)) return `label ${x.label} is not a training target in the vocabulary registry`;
   if (typeof x.session_id !== "string" || !x.session_id) return "missing session_id";
   if (!Array.isArray(x.frames)) return "missing frames";
   if (x.frames.length < MIN_FRAMES) return `only ${x.frames.length} frames (need ${MIN_FRAMES})`;
@@ -42,8 +43,12 @@ function sampleError(s: unknown, allowed: readonly string[]): string | null {
   return null;
 }
 
-/** Validates imported or stored data; invalid samples are dropped and reported. */
-export function validateDataset(data: unknown, allowed: readonly string[] = TRAINABLE_LABELS): DatasetValidation {
+/**
+ * Validates imported or stored data; invalid samples are dropped and reported.
+ * `allowed` comes from the vocabulary registry (trainingLabels); when null,
+ * only the label format is checked.
+ */
+export function validateDataset(data: unknown, allowed: readonly string[] | null = null): DatasetValidation {
   const errors: string[] = [];
   const d = data as Partial<Dataset>;
   if (typeof d !== "object" || d === null || d.format !== DATASET_FORMAT) {

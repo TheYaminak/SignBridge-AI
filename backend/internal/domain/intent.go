@@ -1,8 +1,12 @@
 package domain
 
 import (
+	"bytes"
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -26,69 +30,119 @@ type Reference struct {
 	URL   string `json:"url"`
 }
 
-// Intent is a communication intent the custom classifier can predict.
+// Tri-state for properties that are only known when verified.
+const (
+	FeatureYes     = "yes"
+	FeatureNo      = "no"
+	FeatureUnknown = "unknown"
+)
+
+// Entry kinds. Today every entry is a complete communication intent; "sign"
+// is reserved for future single-sign vocabulary (see README "Extending the
+// vocabulary").
+const (
+	KindPhraseIntent = "phrase_intent"
+	KindSign         = "sign"
+)
+
+// Intent is one entry of the sign vocabulary registry (vocabulary.json).
 type Intent struct {
-	ID         string             `json:"id"`
-	TextES     string             `json:"text_es"`
-	TextEN     string             `json:"text_en"`
-	Status     VerificationStatus `json:"status"`
-	SignCount  int                `json:"sign_count"`
-	References []Reference        `json:"references"`
-	Note       string             `json:"note"`
+	ID     string             `json:"id"`
+	Kind   string             `json:"kind"`
+	TextES string             `json:"text_es"`
+	TextEN string             `json:"text_en"`
+	Status VerificationStatus `json:"status"`
+	// Supported entries may be interpreted; unsupported ones are always rejected.
+	Supported bool `json:"supported"`
+	// TrainingTarget entries can be recorded on /training.
+	TrainingTarget bool `json:"training_target"`
+	// TrainingStatus describes the bundled state: not_trained, trained,
+	// validated, or not_trainable. Models trained locally are reported by the
+	// model itself (its labels), not by this field.
+	TrainingStatus string `json:"training_status"`
+	// Recognizer names the classifier family expected to predict this entry.
+	Recognizer string `json:"recognizer"`
+	SignCount  int    `json:"sign_count"`
+	// Components are the dictionary glosses a phrase intent is made of.
+	Components []string `json:"components"`
+	// RequiresMotion / RequiresNonManual (face or body): yes, no, or unknown.
+	// "unknown" means not verified; dictionary entries are video-only.
+	RequiresMotion    string      `json:"requires_motion"`
+	RequiresNonManual string      `json:"requires_non_manual"`
+	References        []Reference `json:"references"`
+	Note              string      `json:"note"`
 }
 
-// UnknownIntent is the rejection class. It is never interpreted.
+// UnknownIntent is the rejection class. It is never interpreted and is
+// reserved: it cannot appear in the registry.
 const UnknownIntent = "UNKNOWN"
 
-// lsrd is the LSRD dictionary base. The official entry point
-// https://diccionariolsrd.conadis.gob.do/ redirects (301) here.
-const lsrd = "https://diccionariolsrd.cc/diccionario/"
-
-// IntentCatalog lists the supported intents, in display order. Entries were
-// checked against the dictionary index on 2026-11-03; sign descriptions are
-// video-only on the site, so no movements are encoded here.
-var IntentCatalog = []Intent{
-	{
-		ID: "HELLO", TextES: "Hola", TextEN: "Hello",
-		Status: StatusVerifiedSign, SignCount: 1,
-		References: []Reference{{Gloss: "HOLA", URL: lsrd + "hola/"}},
-		Note:       "Single sign documented in the LSRD dictionary.",
-	},
-	{
-		ID: "NEED_HELP", TextES: "Necesito ayuda", TextEN: "I need help",
-		Status: StatusWordReferences, SignCount: 2,
-		References: []Reference{
-			{Gloss: "NECESITAR", URL: lsrd + "necesitar/"},
-			{Gloss: "AYUDA", URL: lsrd + "ayuda/"},
-			{Gloss: "AYUDAR", URL: lsrd + "ayudar/"},
-		},
-		Note: "Words are documented individually; the phrase is not a dictionary entry. Proposed sequence: NECESITAR + AYUDA.",
-	},
-	{
-		ID: "WHERE_BATHROOM", TextES: "¿Dónde está el baño?", TextEN: "Where is the bathroom?",
-		Status: StatusUnavailable, SignCount: 0,
-		References: []Reference{},
-		Note:       "No \"Baño\" or \"Dónde\" entry was found in the LSRD dictionary index, so this expression is not trainable.",
-	},
-	{
-		ID: "THANK_YOU", TextES: "Gracias", TextEN: "Thank you",
-		Status: StatusVerifiedSign, SignCount: 1,
-		References: []Reference{{Gloss: "GRACIAS", URL: lsrd + "gracias/"}},
-		Note:       "Single sign documented in the LSRD dictionary.",
-	},
-	{
-		ID: "NEED_DOCTOR", TextES: "Necesito un médico", TextEN: "I need a doctor",
-		Status: StatusWordReferences, SignCount: 2,
-		References: []Reference{
-			{Gloss: "NECESITAR", URL: lsrd + "necesitar/"},
-			{Gloss: "DOCTOR", URL: lsrd + "doctor/"},
-			{Gloss: "MÉDICO", URL: lsrd + "medicoca/"},
-		},
-		Note: "Words are documented individually; the phrase is not a dictionary entry. Proposed sequence: NECESITAR + DOCTOR (or MÉDICO).",
-	},
+// Vocabulary is the declarative registry file.
+type Vocabulary struct {
+	Version         int      `json:"version"`
+	ReferenceSource string   `json:"reference_source"`
+	Entries         []Intent `json:"entries"`
 }
 
-// LookupIntent returns the catalog entry for id.
+//go:embed vocabulary.json
+var vocabularyJSON []byte
+
+// VocabularyRegistry is the parsed registry; IntentCatalog lists its entries
+// in display order.
+var (
+	VocabularyRegistry = mustLoadVocabulary(vocabularyJSON)
+	IntentCatalog      = VocabularyRegistry.Entries
+)
+
+func mustLoadVocabulary(raw []byte) Vocabulary {
+	v, err := ParseVocabulary(raw)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+var labelPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,31}$`)
+
+// ParseVocabulary decodes and validates a registry.
+func ParseVocabulary(raw []byte) (Vocabulary, error) {
+	var v Vocabulary
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&v); err != nil {
+		return Vocabulary{}, fmt.Errorf("vocabulary: %w", err)
+	}
+	seen := map[string]bool{}
+	for _, e := range v.Entries {
+		switch {
+		case !labelPattern.MatchString(e.ID):
+			return Vocabulary{}, fmt.Errorf("vocabulary: invalid id %q", e.ID)
+		case e.ID == UnknownIntent:
+			return Vocabulary{}, fmt.Errorf("vocabulary: %s is reserved", UnknownIntent)
+		case seen[e.ID]:
+			return Vocabulary{}, fmt.Errorf("vocabulary: duplicate id %q", e.ID)
+		case e.Kind != KindPhraseIntent && e.Kind != KindSign:
+			return Vocabulary{}, fmt.Errorf("vocabulary: %s: invalid kind %q", e.ID, e.Kind)
+		case e.TextES == "" || e.TextEN == "":
+			return Vocabulary{}, fmt.Errorf("vocabulary: %s: texts are required", e.ID)
+		case e.Supported && len(e.References) == 0:
+			return Vocabulary{}, fmt.Errorf("vocabulary: %s: supported entries need a dictionary reference", e.ID)
+		case e.Supported && e.Status == StatusUnavailable, !e.Supported && e.Status != StatusUnavailable:
+			return Vocabulary{}, fmt.Errorf("vocabulary: %s: supported must match status", e.ID)
+		case e.TrainingTarget && (!e.Supported || e.Recognizer == ""):
+			return Vocabulary{}, fmt.Errorf("vocabulary: %s: training targets must be supported and name a recognizer", e.ID)
+		}
+		for _, f := range []string{e.RequiresMotion, e.RequiresNonManual} {
+			if f != FeatureYes && f != FeatureNo && f != FeatureUnknown {
+				return Vocabulary{}, fmt.Errorf("vocabulary: %s: feature flags must be yes, no, or unknown", e.ID)
+			}
+		}
+		seen[e.ID] = true
+	}
+	return v, nil
+}
+
+// LookupIntent returns the registry entry for id.
 func LookupIntent(id string) (Intent, bool) {
 	for _, in := range IntentCatalog {
 		if in.ID == id {
@@ -136,7 +190,7 @@ func (r IntentRequest) Normalize() (IntentRequest, error) {
 	if !ok {
 		return r, fmt.Errorf("%w: unsupported intent %q", ErrInvalidRequest, r.Intent)
 	}
-	if intent.Status == StatusUnavailable {
+	if !intent.Supported {
 		return r, fmt.Errorf("%w: %s (%s)", ErrIntentUnavailable, id, intent.Note)
 	}
 	if r.Confidence < 0 || r.Confidence > 1 {

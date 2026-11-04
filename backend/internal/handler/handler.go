@@ -119,12 +119,13 @@ func (h *handlers) health(w http.ResponseWriter, _ *http.Request) {
 
 // IntentsResponse is returned by GET /api/v1/intents.
 type IntentsResponse struct {
+	Version int             `json:"version"`
 	Intents []domain.Intent `json:"intents"`
 	Unknown string          `json:"unknown"`
 }
 
 func (h *handlers) listIntents(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, IntentsResponse{Intents: domain.IntentCatalog, Unknown: domain.UnknownIntent})
+	writeJSON(w, http.StatusOK, IntentsResponse{Version: domain.VocabularyRegistry.Version, Intents: domain.IntentCatalog, Unknown: domain.UnknownIntent})
 }
 
 func (h *handlers) interpretIntent(w http.ResponseWriter, r *http.Request) {

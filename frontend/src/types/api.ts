@@ -18,18 +18,30 @@ export interface IntentReference {
   url: string;
 }
 
-/** An entry of GET /api/v1/intents. */
+export type FeatureRequirement = "yes" | "no" | "unknown";
+
+/** An entry of the vocabulary registry (GET /api/v1/intents, backend vocabulary.json). */
 export interface IntentInfo {
   id: string;
+  /** "phrase_intent" today; "sign" is reserved for future single-sign entries. */
+  kind: "phrase_intent" | "sign";
   text_es: string;
   text_en: string;
   status: VerificationStatus;
+  supported: boolean;
+  training_target: boolean;
+  training_status: string;
+  recognizer: string;
   sign_count: number;
+  components: string[];
+  requires_motion: FeatureRequirement;
+  requires_non_manual: FeatureRequirement;
   references: IntentReference[];
   note: string;
 }
 
 export interface IntentsResponse {
+  version: number;
   intents: IntentInfo[];
   unknown: string;
 }
