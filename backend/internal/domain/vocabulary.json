@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "reference_source": "Diccionario de Lengua de Señas Dominicana (CONADIS/MINERD/ANSORDO). https://diccionariolsrd.conadis.gob.do/ redirects to https://diccionariolsrd.cc/. Index checked 2026-11-03. Entries are video-only; no movements are encoded here.",
+  "reference_source": "Diccionario de Lengua de Señas Dominicana (CONADIS/MINERD/ANSORDO), https://diccionariolsrd.cc/diccionario-digital/ (official entry point https://diccionariolsrd.conadis.gob.do/ redirects there). Index checked 2026-11-03/04. Entries are video-only and their media was not downloaded or analyzed, so no hand configuration, movement, location, or facial expression is encoded here.",
   "entries": [
     {
       "id": "HELLO",
@@ -13,10 +13,18 @@
       "training_status": "not_trained",
       "recognizer": "knn-sequence-v1",
       "sign_count": 1,
-      "components": ["HOLA"],
+      "components": [
+        "HOLA"
+      ],
+      "sequence_verified": true,
       "requires_motion": "unknown",
       "requires_non_manual": "unknown",
-      "references": [{ "gloss": "HOLA", "url": "https://diccionariolsrd.cc/diccionario/hola/" }],
+      "references": [
+        {
+          "gloss": "HOLA",
+          "url": "https://diccionariolsrd.cc/diccionario/hola/"
+        }
+      ],
       "note": "Single sign documented in the LSRD dictionary."
     },
     {
@@ -30,15 +38,28 @@
       "training_status": "not_trained",
       "recognizer": "knn-sequence-v1",
       "sign_count": 2,
-      "components": ["NECESITAR", "AYUDA"],
+      "components": [
+        "NECESITAR",
+        "AYUDA"
+      ],
+      "sequence_verified": false,
       "requires_motion": "yes",
       "requires_non_manual": "unknown",
       "references": [
-        { "gloss": "NECESITAR", "url": "https://diccionariolsrd.cc/diccionario/necesitar/" },
-        { "gloss": "AYUDA", "url": "https://diccionariolsrd.cc/diccionario/ayuda/" },
-        { "gloss": "AYUDAR", "url": "https://diccionariolsrd.cc/diccionario/ayudar/" }
+        {
+          "gloss": "NECESITAR",
+          "url": "https://diccionariolsrd.cc/diccionario/necesitar/"
+        },
+        {
+          "gloss": "AYUDA",
+          "url": "https://diccionariolsrd.cc/diccionario/ayuda/"
+        },
+        {
+          "gloss": "AYUDAR",
+          "url": "https://diccionariolsrd.cc/diccionario/ayudar/"
+        }
       ],
-      "note": "Words are documented individually; the phrase is not a dictionary entry. Proposed sequence: NECESITAR + AYUDA."
+      "note": "Experimental intent. Each word is documented individually, but the dictionary has no entry for the complete phrase, so the LSRD sign order is NOT verified. The working sequence NECESITAR + AYUDA follows Spanish word order and must be confirmed by a Deaf LSRD signer or interpreter before being treated as LSRD."
     },
     {
       "id": "WHERE_BATHROOM",
@@ -52,10 +73,11 @@
       "recognizer": "",
       "sign_count": 0,
       "components": [],
+      "sequence_verified": false,
       "requires_motion": "unknown",
       "requires_non_manual": "unknown",
       "references": [],
-      "note": "No \"Baño\" or \"Dónde\" entry was found in the LSRD dictionary index, so this expression is not trainable."
+      "note": "Unsupported. No \"Baño\" or \"Dónde\" entry was found in the dictionary index (only Bañar, Bañarse, Bañera, Inodoro), and no phrase entry exists, so no sequence can be verified. Not trainable."
     },
     {
       "id": "THANK_YOU",
@@ -68,10 +90,18 @@
       "training_status": "not_trained",
       "recognizer": "knn-sequence-v1",
       "sign_count": 1,
-      "components": ["GRACIAS"],
+      "components": [
+        "GRACIAS"
+      ],
+      "sequence_verified": true,
       "requires_motion": "unknown",
       "requires_non_manual": "unknown",
-      "references": [{ "gloss": "GRACIAS", "url": "https://diccionariolsrd.cc/diccionario/gracias/" }],
+      "references": [
+        {
+          "gloss": "GRACIAS",
+          "url": "https://diccionariolsrd.cc/diccionario/gracias/"
+        }
+      ],
       "note": "Single sign documented in the LSRD dictionary."
     },
     {
@@ -85,15 +115,28 @@
       "training_status": "not_trained",
       "recognizer": "knn-sequence-v1",
       "sign_count": 2,
-      "components": ["NECESITAR", "DOCTOR"],
+      "components": [
+        "NECESITAR",
+        "DOCTOR"
+      ],
+      "sequence_verified": false,
       "requires_motion": "yes",
       "requires_non_manual": "unknown",
       "references": [
-        { "gloss": "NECESITAR", "url": "https://diccionariolsrd.cc/diccionario/necesitar/" },
-        { "gloss": "DOCTOR", "url": "https://diccionariolsrd.cc/diccionario/doctor/" },
-        { "gloss": "MÉDICO", "url": "https://diccionariolsrd.cc/diccionario/medicoca/" }
+        {
+          "gloss": "NECESITAR",
+          "url": "https://diccionariolsrd.cc/diccionario/necesitar/"
+        },
+        {
+          "gloss": "DOCTOR",
+          "url": "https://diccionariolsrd.cc/diccionario/doctor/"
+        },
+        {
+          "gloss": "MÉDICO",
+          "url": "https://diccionariolsrd.cc/diccionario/medicoca/"
+        }
       ],
-      "note": "Words are documented individually; the phrase is not a dictionary entry. Proposed sequence: NECESITAR + DOCTOR (or MÉDICO)."
+      "note": "Experimental intent. Each word is documented individually, but the dictionary has no entry for the complete phrase, so the LSRD sign order is NOT verified. The working sequence NECESITAR + DOCTOR follows Spanish word order and must be confirmed by a Deaf LSRD signer or interpreter before being treated as LSRD."
     }
   ]
 }

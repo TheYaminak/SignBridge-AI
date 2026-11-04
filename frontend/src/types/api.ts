@@ -34,6 +34,8 @@ export interface IntentInfo {
   recognizer: string;
   sign_count: number;
   components: string[];
+  /** True only when the complete expression, including sign order, is documented. */
+  sequence_verified: boolean;
   requires_motion: FeatureRequirement;
   requires_non_manual: FeatureRequirement;
   references: IntentReference[];
@@ -48,7 +50,8 @@ export interface IntentsResponse {
 
 /** Body of POST /api/v1/intents/interpret. */
 export interface IntentRequest {
-  recognition_type: "custom_sign";
+  /** Phrase-level temporal classifier. "custom_sign" is the Phase 4 alias. */
+  recognition_type: "custom_sign_sequence" | "custom_sign";
   intent: string;
   confidence: number;
   language: string;
@@ -72,7 +75,9 @@ export interface IntentResult {
   provider?: string;
   latency_ms: number;
   usage?: TokenUsage;
-  verification: { status: VerificationStatus; references: IntentReference[] };
+  verification: { status: VerificationStatus; sequence_verified: boolean; references: IntentReference[] };
+  /** The LSRD sign sequence for this expression is not verified. */
+  experimental: boolean;
   prediction_note: string;
 }
 

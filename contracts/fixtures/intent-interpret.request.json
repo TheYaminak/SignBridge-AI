@@ -1,5 +1,5 @@
 {
-  "recognition_type": "custom_sign",
+  "recognition_type": "custom_sign_sequence",
   "intent": "NEED_HELP",
   "confidence": 0.93,
   "language": "es",

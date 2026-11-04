@@ -75,8 +75,16 @@ function quantile(sorted: number[], q: number): number {
   return sorted[idx];
 }
 
+/** Real-time window = median recorded sample length (rounded to 100 ms, 1.5-6 s). */
+export function windowFromSamples(samples: Sample[]): number {
+  const d = samples.map((s) => s.duration_ms).filter((x) => Number.isFinite(x) && x > 0).sort((a, b) => a - b);
+  if (d.length === 0) return DEFAULT_FEATURE_CONFIG.windowMs;
+  const median = d[Math.floor(d.length / 2)];
+  return Math.min(6000, Math.max(1500, Math.round(median / 100) * 100));
+}
+
 export function trainModel(samples: Sample[], opts: TrainOptions = {}): SignModel {
-  const feature = opts.feature ?? DEFAULT_FEATURE_CONFIG;
+  const feature = opts.feature ?? { ...DEFAULT_FEATURE_CONFIG, windowMs: windowFromSamples(samples) };
   const rows: { v: number[]; label: string }[] = [];
   for (const s of samples) {
     const v = sequenceFeatures(s.frames, feature);

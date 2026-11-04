@@ -120,11 +120,11 @@ func TestIntentInterpretEndpoint(t *testing.T) {
 		wantCode int
 		check    string
 	}{
-		{"meta", testAPIKey, `{"recognition_type":"custom_sign","intent":"NEED_HELP","confidence":0.93,"language":"es","raw_labels":["NEED_HELP"]}`, 200, `"source":"meta"`},
-		{"fallback without key", "", `{"recognition_type":"custom_sign","intent":"THANK_YOU","confidence":0.93,"language":"en","raw_labels":["THANK_YOU"]}`, 200, `"source":"local_fallback"`},
-		{"unknown", testAPIKey, `{"recognition_type":"custom_sign","intent":"UNKNOWN","confidence":0.99,"language":"es","raw_labels":["UNKNOWN"]}`, 422, "unknown_intent"},
-		{"unavailable", testAPIKey, `{"recognition_type":"custom_sign","intent":"WHERE_BATHROOM","confidence":0.99,"language":"es","raw_labels":["WHERE_BATHROOM"]}`, 422, "intent_unavailable"},
-		{"unknown field", testAPIKey, `{"recognition_type":"custom_sign","intent":"HELLO","confidence":0.9,"language":"es","raw_labels":["HELLO"],"video":"x"}`, 400, "unknown field"},
+		{"meta", testAPIKey, `{"recognition_type":"custom_sign_sequence","intent":"NEED_HELP","confidence":0.93,"language":"es","raw_labels":["NEED_HELP"]}`, 200, `"source":"meta"`},
+		{"fallback without key", "", `{"recognition_type":"custom_sign_sequence","intent":"THANK_YOU","confidence":0.93,"language":"en","raw_labels":["THANK_YOU"]}`, 200, `"source":"local_fallback"`},
+		{"unknown", testAPIKey, `{"recognition_type":"custom_sign_sequence","intent":"UNKNOWN","confidence":0.99,"language":"es","raw_labels":["UNKNOWN"]}`, 422, "unknown_intent"},
+		{"unavailable", testAPIKey, `{"recognition_type":"custom_sign_sequence","intent":"WHERE_BATHROOM","confidence":0.99,"language":"es","raw_labels":["WHERE_BATHROOM"]}`, 422, "intent_unavailable"},
+		{"unknown field", testAPIKey, `{"recognition_type":"custom_sign_sequence","intent":"HELLO","confidence":0.9,"language":"es","raw_labels":["HELLO"],"video":"x"}`, 400, "unknown field"},
 		{"bad type", testAPIKey, `{"recognition_type":"gesture","intent":"HELLO","confidence":0.9,"language":"es","raw_labels":["HELLO"]}`, 400, "invalid_request"},
 	}
 	for _, tt := range tests {

@@ -65,6 +65,10 @@ type Intent struct {
 	SignCount  int    `json:"sign_count"`
 	// Components are the dictionary glosses a phrase intent is made of.
 	Components []string `json:"components"`
+	// SequenceVerified is true only when the complete expression (including
+	// sign order) is documented. Multi-sign phrases built from individually
+	// documented words are experimental intents.
+	SequenceVerified bool `json:"sequence_verified"`
 	// RequiresMotion / RequiresNonManual (face or body): yes, no, or unknown.
 	// "unknown" means not verified; dictionary entries are video-only.
 	RequiresMotion    string      `json:"requires_motion"`
@@ -131,6 +135,8 @@ func ParseVocabulary(raw []byte) (Vocabulary, error) {
 			return Vocabulary{}, fmt.Errorf("vocabulary: %s: supported must match status", e.ID)
 		case e.TrainingTarget && (!e.Supported || e.Recognizer == ""):
 			return Vocabulary{}, fmt.Errorf("vocabulary: %s: training targets must be supported and name a recognizer", e.ID)
+		case e.SequenceVerified && e.Status != StatusVerifiedSign:
+			return Vocabulary{}, fmt.Errorf("vocabulary: %s: only dictionary-documented expressions can be sequence_verified", e.ID)
 		}
 		for _, f := range []string{e.RequiresMotion, e.RequiresNonManual} {
 			if f != FeatureYes && f != FeatureNo && f != FeatureUnknown {
@@ -152,8 +158,13 @@ func LookupIntent(id string) (Intent, bool) {
 	return Intent{}, false
 }
 
-// RecognitionCustomSign identifies requests from the custom sign classifier.
-const RecognitionCustomSign = "custom_sign"
+// Recognition types accepted by /intents/interpret. custom_sign_sequence is
+// the canonical value (a phrase-level temporal classifier over complete
+// recordings); custom_sign is accepted for Phase 4 clients.
+const (
+	RecognitionCustomSignSequence = "custom_sign_sequence"
+	RecognitionCustomSign         = "custom_sign"
+)
 
 // IntentRequest is the body of POST /api/v1/intents/interpret.
 // See contracts/README.md for the shared contract.
@@ -179,8 +190,8 @@ const maxRawLabels = 8
 
 // Normalize validates the request and returns a normalized copy.
 func (r IntentRequest) Normalize() (IntentRequest, error) {
-	if r.RecognitionType != RecognitionCustomSign {
-		return r, fmt.Errorf("%w: recognition_type must be %q", ErrInvalidRequest, RecognitionCustomSign)
+	if r.RecognitionType != RecognitionCustomSignSequence && r.RecognitionType != RecognitionCustomSign {
+		return r, fmt.Errorf("%w: recognition_type must be %q", ErrInvalidRequest, RecognitionCustomSignSequence)
 	}
 	id := strings.ToUpper(strings.TrimSpace(r.Intent))
 	if id == UnknownIntent {
@@ -255,9 +266,13 @@ type IntentResult struct {
 	// Verification restates the intent's dictionary status. A prediction is
 	// never a verified linguistic translation.
 	Verification struct {
-		Status     VerificationStatus `json:"status"`
-		References []Reference        `json:"references"`
+		Status           VerificationStatus `json:"status"`
+		SequenceVerified bool               `json:"sequence_verified"`
+		References       []Reference        `json:"references"`
 	} `json:"verification"`
+	// Experimental is true when the expression's LSRD sign sequence is not
+	// verified; the UI must label the output as an experimental intent.
+	Experimental   bool   `json:"experimental"`
 	PredictionNote string `json:"prediction_note"`
 }
 

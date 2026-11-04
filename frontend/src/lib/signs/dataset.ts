@@ -92,6 +92,13 @@ export function datasetWarnings(samples: Sample[]): string[] {
   if (new Set(samples.map((s) => s.session_id)).size < 2) {
     w.push("Only one recording session: validation cannot be split by session, so metrics will be optimistic.");
   }
+  const durations = samples.map((s) => s.duration_ms).filter((x) => x > 0).sort((a, b) => a - b);
+  if (durations.length > 1) {
+    const median = durations[Math.floor(durations.length / 2)];
+    if (durations.some((x) => Math.abs(x - median) > median * 0.25)) {
+      w.push(`Recording lengths vary (median ${(median / 1000).toFixed(1)} s). The real-time window uses the median, so keep one length per dataset.`);
+    }
+  }
   if (new Set(samples.map((s) => s.signer_id)).size < 2) {
     w.push("Single signer: the model is not expected to generalize to other people.");
   }
