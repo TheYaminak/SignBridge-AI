@@ -45,7 +45,9 @@ export function TranslationWorkspace() {
           supported: speech.supported,
           speaking: speech.speaking,
           onSpeak: () => {
-            if (result) speech.speak(result.text, speechLangFor(language));
+            if (result) {
+              speech.speak(result.interpretation.text, speechLangFor(language));
+            }
           },
           onStop: speech.cancel,
         }}

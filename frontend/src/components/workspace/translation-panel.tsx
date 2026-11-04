@@ -87,7 +87,8 @@ export function TranslationPanel({
   speech,
 }: TranslationPanelProps) {
   const recognition = RECOGNITION_COPY[recognitionStatus];
-  const confidence = result?.confidence ?? averageConfidence(signs);
+  const confidence =
+    result?.interpretation.confidence ?? averageConfidence(signs);
   const confidencePct =
     confidence === null ? null : Math.round(confidence * 100);
   const hasContent = signs.length > 0 || result !== null;
@@ -183,7 +184,9 @@ export function TranslationPanel({
             className="min-h-24 rounded-lg border bg-background/40 p-4 text-lg leading-relaxed"
           >
             {result ? (
-              <p lang={result.language}>{result.text}</p>
+              <p lang={result.interpretation.language}>
+                {result.interpretation.text}
+              </p>
             ) : (
               <p className="text-base text-muted-foreground">
                 The translation will appear here once signs are recognized.
