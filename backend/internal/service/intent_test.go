@@ -95,7 +95,8 @@ func TestInterpretIntentFallbacks(t *testing.T) {
 
 func TestInterpretIntentFallbackUncertainIsHedged(t *testing.T) {
 	got, _ := NewMetaIntentInterpreter(&fakeClient{}, 0.75, nil).InterpretIntent(context.Background(), intentReq("HELLO", 0.5))
-	if !got.Uncertain || got.TextES != "Posiblemente: Hola" || got.TextEN != "Possibly: Hello" {
+	// Uncertainty is a flag only; the spoken text is the plain phrase.
+	if !got.Uncertain || got.TextES != "Hola" || got.TextEN != "Hello" {
 		t.Errorf("got %+v", got)
 	}
 }
@@ -148,5 +149,33 @@ func TestInterpretIntentAcceptsLegacyRecognitionType(t *testing.T) {
 	req.RecognitionType = "custom_sign"
 	if _, err := NewMetaIntentInterpreter(okClient(validIntentOutput), 0.75, nil).InterpretIntent(context.Background(), req); err != nil {
 		t.Fatalf("Phase 4 clients must keep working: %v", err)
+	}
+}
+
+func TestInterpretIntentStripsHedgingFromModelText(t *testing.T) {
+	client := okClient(`{"text_es":"Posiblemente: necesito un médico.","text_en":"Possibly, I need a doctor.","uncertain":true}`)
+	got, err := NewMetaIntentInterpreter(client, 0.75, nil).InterpretIntent(context.Background(), intentReq("NEED_DOCTOR", 0.55))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TextES != "Necesito un médico." || got.TextEN != "I need a doctor." || !got.Uncertain {
+		t.Errorf("got %q / %q uncertain=%v", got.TextES, got.TextEN, got.Uncertain)
+	}
+	if strings.Contains(client.lastReq.Messages[0].Content, `phrase the message tentatively`) {
+		t.Error("prompt must not ask for tentative phrasing")
+	}
+}
+
+func TestStripHedge(t *testing.T) {
+	for in, want := range map[string]string{
+		"Posiblemente: Hola": "Hola",
+		"quizás gracias":     "Gracias",
+		"Maybe - hello":      "Hello",
+		"Hola":               "Hola",
+		"Posiblemente":       "Posiblemente",
+	} {
+		if got := stripHedge(in); got != want {
+			t.Errorf("stripHedge(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
