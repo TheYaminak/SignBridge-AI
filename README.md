@@ -14,25 +14,26 @@ A sign recognizer outputs glosses: isolated labels such as `HELP` and `DOCTOR`, 
 - It answers in a strict JSON schema (structured output). The Go backend validates every reply before the user sees it.
 - The UI always shows the **raw recognized labels** and the **AI-generated interpretation** as separate things, so users can see exactly what the model added.
 
-## Status: Phase 2
+## Status: Phase 3
 
 | Area | State |
 | --- | --- |
-| Next.js UI: camera preview, device selection, translation panel, speech, backend status | ✅ Done |
-| Go API: health, Meta status, Meta connection test, sign interpretation | ✅ Done |
-| Meta Model API client (Chat Completions, Muse Spark, structured output) | ✅ Done |
-| Developer tools: Meta AI Connection panel and Manual AI Integration Test | ✅ Done |
-| Live Muse Spark request verified | ⚠️ Blocked by Meta account billing (see [Verification status](#verification-status)) |
-| On-device sign recognition (MediaPipe) | ⏳ Phase 3 |
+| Next.js UI: camera, device selection, translation panel, speech, backend status | ✅ Done |
+| Go API: health, Meta status, Meta connection test, interpretation | ✅ Done |
+| Meta Model API client (Chat Completions, Muse Spark, structured output) | ✅ Done, live request verified |
+| Live hand tracking (MediaPipe Gesture Recognizer, 2 hands, 21 landmarks each) | ✅ Done |
+| Gesture stabilization (threshold, smoothing, duplicate suppression, cooldown) | ✅ Done |
+| Camera → MediaPipe → Go → Muse Spark → text → speech | ✅ Done |
+| Custom sign-language classifier | ⏳ Extension point ready, no model trained yet |
 
-The app never fabricates recognition results or translations. Until the recognizer exists, the camera workspace shows no signs. The only way to send signs to the model is the clearly labeled **Manual AI Integration Test**.
+**What it recognizes today:** MediaPipe's 7 built-in generic hand gestures (open palm, closed fist, thumb up, thumb down, victory, pointing up, "I love you" hand shape). **These are not sign-language words.** Muse Spark describes them as gestures ("The person is showing a thumbs-up gesture") and never translates them into signs. Sign-language glosses can only be tested through the clearly labeled **Manual AI Integration Test**.
 
 ## Architecture
 
 ```
 Browser (Next.js, frontend only)                 Go API (all business logic)                Meta Model API
 ┌──────────────────────────────────┐             ┌──────────────────────────────────┐        ┌──────────────────┐
-│ Webcam ─► recognizer (Phase 3)   │  labels +   │ handler: validate JSON           │        │ POST /v1/chat/   │
+│ Webcam ─► MediaPipe ─► gestures  │  labels +   │ handler: validate JSON           │        │ POST /v1/chat/   │
 │   └► RecognizedSign[] ───────────┼─confidence─►│ service: normalize labels,       │ HTTPS  │   completions    │
 │ Manual AI Integration Test ──────┼────────────►│   apply threshold, build prompt ─┼───────►│ muse-spark-1.3   │
 │                                  │             │ meta client: Bearer MODEL_API_KEY│        │ (json_schema     │
@@ -56,10 +57,13 @@ signbridge-ai/
 │       ├── meta/                Meta Model API Chat Completions client (net/http)
 │       └── service/             interpreter, prompt, output contract, connection tester
 ├── frontend/                    Next.js App Router + Tailwind + shadcn/ui
+│   ├── public/models/           gesture_recognizer.task (official MediaPipe model)
+│   ├── scripts/                 copy-mediapipe-wasm.mjs (runs before dev/build)
 │   └── src/
 │       ├── app/                 layout and page
 │       ├── components/          header, workspace panels, dev/ (developer tools), ui/
-│       ├── hooks/               useCamera, useBackendHealth, useSpeechSynthesis
+│       ├── hooks/               useCamera, useHandTracking, useBackendHealth, useSpeechSynthesis
+│       ├── lib/vision/          hand tracker, classifier, stabilizer, drawing (+ unit tests)
 │       ├── lib/                 typed API client, config, languages, formatting
 │       └── types/               shared types (mirror backend/internal/domain)
 ├── docker-compose.yml
@@ -149,6 +153,7 @@ All configuration lives in **one root `.env`** (copy it from `.env.example`). Do
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8080` | Go API URL as seen by the **browser** |
 | `NEXT_PUBLIC_ENABLE_DEV_TOOLS` | `false` (`true` in compose) | Show developer tools in production builds. Always on in `npm run dev`. |
+| `NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE` | `0.8` | Per-frame MediaPipe confidence a gesture needs before it counts |
 
 Never put secrets in `NEXT_PUBLIC_*` variables. They ship to the browser.
 
@@ -172,6 +177,44 @@ The Go client in [`backend/internal/meta`](backend/internal/meta/client.go) foll
 4. **Prompt Muse Spark:** a `developer` message with the rules, plus the accepted labels as JSON data.
 5. **Validate the reply:** strict JSON (no unknown or missing fields), non-empty text of at most 600 characters, confidence in [0, 1]. Refusals, content filtering, and truncated output are rejected.
 6. **Respond:** the raw labels (`recognized_signs`) and the AI output (`interpretation`, `generated_by: "ai"`) are kept separate.
+
+## Computer vision (MediaPipe)
+
+Hand tracking runs **entirely in the browser** with [`@mediapipe/tasks-vision`](https://www.npmjs.com/package/@mediapipe/tasks-vision) Gesture Recognizer in `VIDEO` mode, on the existing camera stream. No second camera is opened, and no frames leave the device.
+
+- **Model and runtime are self-hosted.** `public/models/gesture_recognizer.task` is the official model from Google's MediaPipe model storage. The WASM runtime is copied from `node_modules` into `public/mediapipe/wasm` by `scripts/copy-mediapipe-wasm.mjs`, which runs automatically before `npm run dev` and `npm run build`, including inside Docker. Nothing loads from a CDN at runtime.
+- **GPU first, CPU fallback.** If the GPU delegate can't initialize, or fails on its first frames, the tracker restarts on CPU. The camera overlay shows which delegate is active and the FPS.
+- **Skeleton overlay.** A canvas sized to the video's native resolution uses the same `object-cover` and mirror transform as the preview, so landmarks line up with the mirrored selfie view without coordinate math. Use **Hide skeleton** to toggle it.
+- **Performance.** Per-frame data stays in refs. React state updates at most every 100 ms and only when visible values change. MediaPipe resources are released when the camera stops or the page unmounts.
+
+### Pipeline stages (extension point for custom signs)
+
+| Stage | Code | Output |
+| --- | --- | --- |
+| 1. Landmark extraction | `lib/vision/hand-tracker.ts` | `FrameObservation`: up to 2 hands × 21 landmarks, handedness, MediaPipe gesture |
+| 2. Classification | `lib/vision/classifier.ts` (`FrameClassifier` interface) | `Classification` per frame |
+| 3. Temporal processing | `lib/vision/stabilizer.ts` | `StableRecognition` events |
+| 4. Interpretation | Go `POST /api/v1/interpret` → Muse Spark | Structured description |
+
+To add a custom sign-language classifier, implement `FrameClassifier` with `kind: "sign"`. It can buffer `frame.hands[i].landmarks` over time and run its own model. Then pass it to `useHandTracking`, and send `recognition_type: "sign"`. Nothing else changes.
+
+### Stabilization
+
+Raw per-frame predictions flicker, so a gesture is added to the sequence only when all of these hold:
+
+- **Confidence threshold:** per-frame confidence ≥ `NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE` (default **0.8**). Lower-confidence frames count as "no gesture".
+- **Temporal smoothing:** the label wins at least 70% of the last 10 frames.
+- **Duplicate suppression:** a held gesture is added once. The same gesture can be added again after the hand relaxes or leaves the frame.
+- **Cooldown:** at most one new gesture per 1.2 s.
+- **Reset:** after 8 consecutive frames without hands.
+
+Gestures are **only sent to the Go API when the user clicks "Interpret recognized gestures"**. Detections never reach Meta automatically.
+
+### Gestures vs. signs vs. AI text
+
+- Camera gestures are sent with `recognition_type: "gesture"`. The backend accepts only the 7 MediaPipe labels for this type and uses a prompt that tells Muse Spark these are generic gestures, not sign language. It must describe them, never translate them.
+- Manual test input and future custom classifiers use `recognition_type: "sign"`, which means sign-language glosses.
+- The UI always shows the raw recognized sequence separately from the **AI-generated description**.
 
 ## API
 
@@ -230,11 +273,21 @@ curl -X POST http://localhost:8080/api/v1/interpret \
   }'
 ```
 
-Response shape (values illustrative):
+Optional `recognition_type`: `"sign"` (default) or `"gesture"`. For camera gestures, send the MediaPipe labels with `"source": "camera", "recognition_type": "gesture"`:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/interpret \
+  -H "Content-Type: application/json" \
+  -d '{"signs":[{"label":"Thumb_Up","confidence":0.92,"timestamp":1730000000000}],
+       "language":"en","source":"camera","recognition_type":"gesture"}'
+```
+
+Response shape for the sign example above (values illustrative):
 
 ```json
 {
   "source": "manual",
+  "recognition_type": "sign",
   "recognized_signs": [
     { "label": "HELP", "confidence": 0.94, "timestamp": 1730000000000 },
     { "label": "DOCTOR", "confidence": 0.91, "timestamp": 1730000000500 }
@@ -286,9 +339,12 @@ The same checks work with `curl`; see [API](#api).
 
 ## Verification status
 
-The client, endpoints, and UI are implemented and covered by automated tests. **A successful live Muse Spark response has not been verified yet.**
-
-The live test reached Meta and wasn't rejected as unauthorized (no 401), but Meta returned **HTTP 402 `billing_error` / `billing_not_configured`**: the team that owns the key needs to resolve billing on the [Meta developer dashboard](https://dev.meta.ai/). After billing is set up, run **Test connection** again. No code changes are expected.
+- **Meta Model API:** a live `POST /api/v1/meta/test` returned `READY` from `muse-spark-1.3` (about 1.7 s, token usage reported).
+- **Full pipeline in a real browser:** headless Chrome with a fake camera streaming Google's official MediaPipe sample photos ran the production build. Results:
+  - MediaPipe loaded on the GPU delegate (about 76 fps) and the skeleton aligned with the mirrored preview.
+  - "Victory" and "Thumb up" were recognized, the sequence went through Go to Muse Spark, and Muse Spark returned a gesture description in Spanish. The Speak button was enabled.
+  - The static stock photos score 0.70–0.77, so that run used `NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE=0.6`. At the default 0.8 they were correctly held back.
+- **Not verified by us:** a live webcam with real hands. Try it with your camera. If clear gestures stay under 80%, lower `NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE` (for example to `0.7`) and rebuild.
 
 ## Testing and checks
 
@@ -301,6 +357,7 @@ go test ./...
 
 # Frontend
 cd frontend
+npm test            # vision pipeline unit tests (stabilizer, classifier)
 npm run lint
 npm run typecheck
 npm run build
@@ -309,12 +366,33 @@ npm run build
 npm run check
 ```
 
+### Docker test run
+
+```bash
+# From the repo root. Stop any local `npm run dev` first (ports 3000/8080).
+docker compose up --build                # build and start both services
+
+# In another terminal:
+curl http://localhost:8080/health
+curl http://localhost:8080/api/v1/meta/status
+curl -X POST http://localhost:8080/api/v1/meta/test
+curl -I http://localhost:3000/models/gesture_recognizer.task          # 200
+curl -I http://localhost:3000/mediapipe/wasm/vision_wasm_internal.wasm # 200, application/wasm
+
+# Then open http://localhost:3000, start the camera, and show 👍 or ✋.
+
+docker compose logs -f backend           # watch API and Meta calls
+docker compose down                      # stop
+```
+
+To change the gesture threshold in Docker, set `NEXT_PUBLIC_GESTURE_MIN_CONFIDENCE` in `.env` and run `docker compose up --build frontend`.
+
 Backend tests cover input validation, label normalization, confidence thresholds, Meta request serialization, response parsing, provider errors, a missing API key, timeouts, error sanitization, and the HTTP endpoints. They use `httptest` and injected fakes, with no real network calls.
 
 ## Privacy and security
 
-- Camera frames are processed only in the browser. Nothing is recorded or uploaded.
-- Only sign labels, confidence scores, and timestamps are sent to the backend. Only the normalized labels and confidences reach Meta.
+- Camera frames and hand landmarks are processed only in the browser (MediaPipe runs locally). Nothing is recorded or uploaded.
+- Only labels, confidence scores, and timestamps are sent to the backend, and only when the user clicks **Interpret**. Only the normalized labels and confidences reach Meta.
 - `MODEL_API_KEY` is used only by the Go backend. It's never logged, returned by any endpoint, or included in the frontend bundle.
 - Error responses are sanitized. Provider error text stays in server logs.
 - The connection test endpoint is disabled in production.
@@ -322,8 +400,9 @@ Backend tests cover input validation, label normalization, confidence thresholds
 
 ## Current limitations
 
-- **No camera recognition yet.** MediaPipe-based recognition of a small sign vocabulary is planned for Phase 3. Until then, signs can only be entered manually in the developer tools, and that input is always labeled as manual.
-- The interpretation is an AI approximation built from isolated glosses. It can't capture grammar, facial expressions, or other parts of signed languages that a gloss list doesn't carry.
+- **Gestures, not sign language.** The camera recognizes 7 generic MediaPipe gestures. No sign-language vocabulary is recognized yet. A custom classifier can plug into the `FrameClassifier` extension point.
+- Recognition works on single static hand shapes. Movement-based signs need a sequence model, which isn't built yet.
+- The interpretation is an AI approximation built from isolated labels. It can't capture grammar, facial expressions, or other parts of signed languages that a label list doesn't carry.
 - Output languages: Spanish and English.
 - The model's `confidence` is self-reported and isn't a calibrated probability.
 

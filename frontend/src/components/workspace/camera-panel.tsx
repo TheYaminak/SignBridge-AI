@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, type RefObject } from "react";
 import {
   AlertTriangle,
   Camera,
   CameraOff,
+  Hand,
   Loader2,
   ShieldCheck,
   VideoOff,
@@ -31,9 +32,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { useCamera } from "@/hooks/use-camera";
+import type { useHandTracking } from "@/hooks/use-hand-tracking";
+import { formatPercent } from "@/lib/format";
+import { gestureDisplayName, gestureEmoji } from "@/lib/vision/gestures";
 import { cn } from "@/lib/utils";
 
 type Camera = ReturnType<typeof useCamera>;
+type Vision = ReturnType<typeof useHandTracking>;
 
 const STATUS_LABELS: Record<Camera["status"], string> = {
   idle: "Off",
@@ -42,16 +47,32 @@ const STATUS_LABELS: Record<Camera["status"], string> = {
   error: "Error",
 };
 
-export function CameraPanel({ camera }: { camera: Camera }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+interface CameraPanelProps {
+  camera: Camera;
+  vision: Vision;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  canvasRef: RefObject<HTMLCanvasElement | null>;
+  showSkeleton: boolean;
+  onToggleSkeleton: () => void;
+}
+
+export function CameraPanel({
+  camera,
+  vision,
+  videoRef,
+  canvasRef,
+  showSkeleton,
+  onToggleSkeleton,
+}: CameraPanelProps) {
   const { status, error, devices, deviceId, stream } = camera;
   const isActive = status === "active";
   const isRequesting = status === "requesting";
+  const { snapshot } = vision;
 
   useEffect(() => {
     const video = videoRef.current;
     if (video) video.srcObject = stream;
-  }, [stream]);
+  }, [stream, videoRef]);
 
   return (
     <Card className="h-full">
@@ -93,6 +114,53 @@ export function CameraPanel({ camera }: { camera: Camera }) {
               !isActive && "invisible",
             )}
           />
+          {/* Same box, fit, and mirror as the video so landmarks line up. */}
+          <canvas
+            ref={canvasRef}
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-0 size-full -scale-x-100 object-cover",
+              (!isActive || !showSkeleton) && "invisible",
+            )}
+          />
+
+          {isActive && (
+            <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-wrap items-start justify-between gap-2 text-xs">
+              <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 font-medium text-white backdrop-blur">
+                {vision.status === "loading" ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                    Loading hand model…
+                  </>
+                ) : vision.status === "error" ? (
+                  <>
+                    <AlertTriangle className="size-3 text-destructive" aria-hidden="true" />
+                    Hand tracking unavailable
+                  </>
+                ) : (
+                  <>
+                    <Hand className="size-3" aria-hidden="true" />
+                    {snapshot.handCount} {snapshot.handCount === 1 ? "hand" : "hands"}
+                  </>
+                )}
+              </span>
+              {snapshot.gesture && (
+                <span className="rounded-full bg-black/60 px-2.5 py-1 font-medium text-white backdrop-blur">
+                  {gestureEmoji(snapshot.gesture.label)} {gestureDisplayName(snapshot.gesture.label)}{" "}
+                  <span className="tabular-nums opacity-80">
+                    {formatPercent(snapshot.gesture.confidence)}
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+          {isActive && vision.delegate && (
+            <span className="pointer-events-none absolute right-3 bottom-3 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-white/80">
+              MediaPipe · {vision.delegate}
+              {snapshot.fps > 0 && ` · ${snapshot.fps} fps`}
+            </span>
+          )}
+
           {!isActive && (
             <div
               className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
@@ -131,9 +199,16 @@ export function CameraPanel({ camera }: { camera: Camera }) {
             <AlertDescription>{error.message}</AlertDescription>
           </Alert>
         )}
+        {vision.error && (
+          <Alert variant="destructive" role="alert">
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle>Hand tracking error</AlertTitle>
+            <AlertDescription>{vision.error} Stop and restart the camera to retry.</AlertDescription>
+          </Alert>
+        )}
       </CardContent>
 
-      <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+      <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         {isActive || isRequesting ? (
           <Button
             variant="destructive"
@@ -150,6 +225,16 @@ export function CameraPanel({ camera }: { camera: Camera }) {
             {status === "error" ? "Try again" : "Start camera"}
           </Button>
         )}
+
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={onToggleSkeleton}
+          aria-pressed={showSkeleton}
+        >
+          <Hand aria-hidden="true" />
+          {showSkeleton ? "Hide skeleton" : "Show skeleton"}
+        </Button>
 
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
           <span
@@ -168,7 +253,7 @@ export function CameraPanel({ camera }: { camera: Camera }) {
           >
             <SelectTrigger
               aria-labelledby="camera-device-label"
-              className="w-full min-w-0 sm:max-w-64"
+              className="w-full min-w-0 sm:max-w-56"
             >
               <SelectValue
                 placeholder={

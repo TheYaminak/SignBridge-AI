@@ -20,12 +20,20 @@ export type SignSequence = RecognizedSign[];
 /** Where a sign sequence came from. Manual input is never camera recognition. */
 export type SignSource = "camera" | "manual";
 
+/**
+ * What the labels are: "gesture" = generic MediaPipe hand gestures (not sign
+ * language); "sign" = sign-language glosses (manual test / future classifier).
+ */
+export type RecognitionType = "sign" | "gesture";
+
 /** Request body for POST /api/v1/interpret. */
 export interface InterpretationRequest {
   signs: SignSequence;
   /** Output language: "es" or "en". */
   language: string;
   source?: SignSource;
+  /** Defaults to "sign" on the backend. */
+  recognition_type?: RecognitionType;
 }
 
 /** An input sign that was not sent to the model, and why. */
@@ -54,6 +62,7 @@ export interface Interpretation {
 /** Response of POST /api/v1/interpret. */
 export interface InterpretationResult {
   source?: SignSource;
+  recognition_type: RecognitionType;
   /** Normalized input signs that met the threshold and were sent to the model. */
   recognized_signs: SignSequence;
   discarded_signs: DiscardedSign[];
@@ -64,10 +73,3 @@ export interface InterpretationResult {
   latency_ms: number;
   usage?: TokenUsage;
 }
-
-/** Recognition pipeline state shown to the user. */
-export type RecognitionStatus =
-  | "camera-off"
-  | "recognizer-unavailable"
-  | "listening"
-  | "interpreting";

@@ -72,14 +72,19 @@ func (s *MetaInterpreter) Interpret(ctx context.Context, req domain.Interpretati
 		return domain.InterpretationResult{}, meta.ErrNotConfigured
 	}
 
-	user, err := userPrompt(norm.Language, accepted)
+	user, err := userPrompt(norm.Language, norm.RecognitionType, accepted)
 	if err != nil {
 		return domain.InterpretationResult{}, fmt.Errorf("build prompt: %w", err)
+	}
+	languageName := domain.SupportedLanguages[norm.Language]
+	system := systemPrompt(languageName)
+	if norm.RecognitionType == domain.RecognitionGesture {
+		system = gestureSystemPrompt(languageName)
 	}
 
 	resp, err := s.client.ChatCompletion(ctx, meta.ChatRequest{
 		Messages: []meta.Message{
-			{Role: meta.RoleDeveloper, Content: systemPrompt(domain.SupportedLanguages[norm.Language])},
+			{Role: meta.RoleDeveloper, Content: system},
 			{Role: meta.RoleUser, Content: user},
 		},
 		MaxCompletionTokens: interpretMaxCompletionTokens,
@@ -102,6 +107,7 @@ func (s *MetaInterpreter) Interpret(ctx context.Context, req domain.Interpretati
 	}
 	return domain.InterpretationResult{
 		Source:          norm.Source,
+		RecognitionType: norm.RecognitionType,
 		RecognizedSigns: accepted,
 		DiscardedSigns:  discarded,
 		MinConfidence:   s.minConfidence,
